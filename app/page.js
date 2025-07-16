@@ -254,9 +254,9 @@ const CodeRefactoringInterface = () => {
   const [showAllCode, setShowAllCode] = useState(true); // Default to showing all code
   
   // Code display controls
-  const [fontSize, setFontSize] = useState(0.7); // Even smaller default font
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [codeMaxHeight, setCodeMaxHeight] = useState(1600); // Much larger default height
+  const [fontSize, setFontSize] = useState(0.6); // Even smaller default font to show more lines
+  const [isFullscreen, setIsFullscreen] = useState(true); // Start in fullscreen mode
+  const [codeMaxHeight, setCodeMaxHeight] = useState(5000); // Much larger default height to show code up to line 222
   
   // Organization view state
   const [organizationFiles, setOrganizationFiles] = useState([]);
@@ -436,96 +436,244 @@ const CodeRefactoringInterface = () => {
     }
   }, [organizationFiles, folders, currentView]);
 
-  const exampleCode = `import numpy as np
-import matplotlib.pyplot as plt
+  const exampleCode = `import os.path
+import numpy as np
 from nd2reader import ND2Reader
-from scipy.ndimage import zoom, gaussian_filter
 from tifffile import imread
- 
- 
- 
-def load_image(file_path):
-    if file_path.endswith('.nd2'):
-        microscopy_data = ND2Reader(file_path)
-        raw_image = microscopy_data[0]
-        downsampling_factor = 0.5
-        blur_factor = 1
-    elif file_path.endswith('.tiff') or file_path.endswith('.tif'):
-        raw_image = imread(file_path)
-        downsampling_factor = 0.3
-        blur_factor = 2
+from pynwb import NWBHDF5IO
+from scipy.ndimage import zoom, gaussian_filter
+import matplotlib.pyplot as plt
+
+
+def load_tif(file_path):
+    microscopy_volume = imread(file_path)
+    return microscopy_volume
+
+
+def load_nd2(file_path):
+    raw_data = ND2Reader(file_path)
+    microscopy_volume = np.transpose(raw_data, (1, 2, 0))
+
+    return microscopy_volume
+
+
+def load_nwb(file_path):
+    io_obj = NWBHDF5IO(file_path, mode="r")
+    nwb_file = io_obj.read()
+
+    image_data = nwb_file.acquisition['NeuroPALImageRaw'].data[:]
+    rotated_image = np.transpose(image_data, (1, 0, 2, 3))
+
+    rgb_channel_indices = nwb_file.acquisition['NeuroPALImageRaw'].RGBW_channels[:3]
+    microscopy_volume = rotated_image[:, :, :, rgb_channel_indices]
+
+    image_dtype = microscopy_volume.dtype
+    maximum_integer_value = np.iinfo(image_dtype).max
+    microscopy_volume = (microscopy_volume / maximum_integer_value) * 255
+
+    io_obj.close()
+
+    return microscopy_volume
+
+
+def load_parameters(file_format):
+    match file_format:
+        case 'nd2':
+            is_normalized = False
+            is_mip = False
+            is_cropped = False
+            zoom_level = (1, 1)
+            gaussian_sigma = 0
+
+        case 'tif' | 'tiff':
+            is_normalized = False
+            is_mip = True
+            is_cropped = False
+            zoom_level = (0.35, 0.35, 1)
+            gaussian_sigma = 0.3
+
+        case 'nwb':
+            is_normalized = False
+            is_mip = False
+            is_cropped = True
+            zoom_level = (1, 0.75, 1)
+            gaussian_sigma = 0
+
+        case _:
+            raise ValueError("Unknown file format!")
+
+    return is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma
+
+
+def load_file(path):
+    if path.endswith('.nd2'):
+        microscopy_data = load_nd2(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = load_parameters(file_format='nd2')
+
+    elif path.endswith('.tiff') or path.endswith('.tif'):
+        microscopy_data = load_tif(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = load_parameters(file_format='tiff')
+
+    elif path.endswith('.nwb'):
+        microscopy_data = load_nwb(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = load_parameters(file_format='nwb')
+
     else:
-        raise ValueError(f"Unsupported file format: {file_path}")
-    return raw_image, downsampling_factor, blur_factor
- 
- 
+        raise ValueError(f"Unsupported file format: {path}")
+
+    image_parameters = {
+        'is_normalized': is_normalized,
+        'is_mip': is_mip,
+        'is_cropped': is_cropped,
+        'downsampling_factor': zoom_level,
+        'smooth_factor': gaussian_sigma
+    }
+
+    return microscopy_data, image_parameters
+
+
+def maximally_project_image(image):
+    dimensions = np.array(image.shape)
+
+    if len(dimensions) < 4:
+        z_index = np.argmin(dimensions)
+    else:
+        z_index = np.argpartition(dimensions, 1)[1]
+
+    maximum_intensity_projection = np.max(image, axis=z_index)
+
+    return maximum_intensity_projection
+
+
 def normalize_image(image):
-    lowest_pixel_value = np.min(raw_image)
+    lowest_pixel_value = np.min(image)
     highest_pixel_value = np.max(image)
+
     pixel_value_range = highest_pixel_value - lowest_pixel_value
     bottom_capped_image = image - lowest_pixel_value
+
     normalized_image = bottom_capped_image / pixel_value_range
+
     return normalized_image
 
+
+def crop_background_border(image, background_percentile):
+    bg = np.percentile(image, background_percentile)
+    non_bg = image > bg
+
+    row_indices = np.where(non_bg.any(axis=1))[0]
+    col_indices = np.where(non_bg.any(axis=0))[0]
+
+    row_slice = slice(row_indices[0], row_indices[-1] + 1)
+    col_slice = slice(col_indices[0], col_indices[-1] + 1)
+
+    return image[row_slice, col_slice]
+
+
 def downsample_image(image, factor):
-    downsampled_image = zoom(image, (factor, factor))
-    return downsampled_image
-    
- 
- 
+    image = zoom(image, factor)
+
+    return image
+
+
 def smooth_image(image, factor):
-    smoothed_image = gaussian_filter(image, sigma=factor)
-    return smoothed_image
+    image = gaussian_filter(image, sigma=factor)
+
+    return image
 
 
-def preprocess_image(raw_image, downsampling_factor, gaussian_sigma):
-    normalized_image = normalize_image(raw_image)
-    downsampled_image = downsample_image(normalized_image, downsampling_factor)
-    smoothed_image = smooth_image(downsampled_image, gaussian_sigma)
+def generate_comparison_plot(generated_images, output_path):
+    num_images = len(generated_images)
+    fig, axes = plt.subplots(1, num_images, figsize=(4 * num_images, 3))
 
-    return smoothed_image
+    current_axes = 0
+    for label, image in generated_images.items():
+        axes[current_axes].imshow(image)
+        axes[current_axes].set_title(label)
+        current_axes += 1
+
+    plt.savefig(output_path)
 
 
-def plot_images(raw_images, processed_images):
-    num_images = len(raw_images)
-    fig, axes = plt.subplots(num_images, 2, figsize=(12, 6 * num_images))
+def plot_single_file(image):
+    plt.imshow(image)
+    return
+
+
+def plot_multiple_files(filenames, images, output_path=None):
+    num_images = len(images)
+    fig, axes = plt.subplots(1, num_images, figsize=(4 * num_images, 3))
 
     for i in range(num_images):
-        axes[i, 0].imshow(raw_images[i], cmap='gray')
-        axes[i, 0].set_title(f'Raw Image {i + 1}')
-        axes[i, 0].axis('off')
+        filename = filenames[i]
+        image = images[i]
 
-        axes[i, 1].imshow(processed_images[i], cmap='gray')
-        axes[i, 1].set_title(f'Processed Image {i + 1}')
-        axes[i, 1].axis('off')
+        axes[i].imshow(image)
+        axes[i].set_title(filename)
+
+    if output_path is not None:
+        plt.savefig(output_path)
 
     plt.show()
 
 
 if __name__ == "__main__":
-    file_paths = ['microscopy_volume1.nd2', 'microscopy_volume2.nd2', 'microscopy_volume3.tiff']
+    files = ['20191010_tail_01.nd2', '20240523_Vang-1_37.tif', 'sub-11-YAaLR_ophys.nwb']
 
-    raw_images = []
     processed_images = []
+    for filename in files:
+        image, image_parameters = load_file(f"{filename}")
+        processing_steps = {}
 
-    for file_path in file_paths:
-        raw_image, downsampling_factor, blur_factor = load_image(file_path)
+        if not image_parameters['is_mip']:
+            image = maximally_project_image(image=image)
+            processing_steps['maximum intensity projection'] = image
 
-        processed_image = preprocess_image(raw_image, downsampling_factor, blur_factor)
+        if not image_parameters['is_normalized']:
+            image = normalize_image(image)
+            processing_steps['normalized'] = image
 
-        raw_images.append(raw_image)
-        processed_images.append(processed_image)
+        if not image_parameters['is_cropped']:
+            image = crop_background_border(image=image,
+                                           background_percentile=98)
+            processing_steps['cropped'] = image
 
-    plot_images(raw_images, processed_images)
+        image = downsample_image(
+            image=image,
+            factor=image_parameters['downsampling_factor'])
+        processing_steps['downsampled'] = image
+
+        image = smooth_image(
+            image=image,
+            factor=image_parameters['smooth_factor'])
+        processing_steps['smoothed'] = image
+
+        file_identifier = filename.split('.')[0]
+        generate_comparison_plot(
+            generated_images=processing_steps,
+            output_path=f"{file_identifier}_comparison.png")
+
+        processed_images.append(image)
+
+    plot_multiple_files(filenames=files,
+                        images=processed_images,
+                        output_path=f"overview.png")
 `;
 
   const functions = [
-    'load_image',
-    'normalize_image', 
+    'load_tif',
+    'load_nd2',
+    'load_nwb',
+    'load_parameters',
+    'load_file',
+    'maximally_project_image',
+    'normalize_image',
+    'crop_background_border',
     'downsample_image',
     'smooth_image',
-    'preprocess_image',
-    'plot_images'
+    'generate_comparison_plot',
+    'plot_single_file',
+    'plot_multiple_files'
   ];
 
   const colors = ['primary', 'secondary', 'success', 'error', 'warning', 'info'];
@@ -1249,6 +1397,16 @@ if __name__ == "__main__":
     // Remove .py extension for editing
     const nameWithoutExtension = currentName.replace(/\.py$/i, '');
     setEditingName(nameWithoutExtension);
+  };
+
+  const handleSingleClick = (fileId, currentName) => {
+    // Only enable editing if the file is already selected
+    if (selectedFile === fileId) {
+      setEditingFile(fileId);
+      // Remove .py extension for editing
+      const nameWithoutExtension = currentName.replace(/\.py$/i, '');
+      setEditingName(nameWithoutExtension);
+    }
   };
 
   const handleNameChange = (e) => {
@@ -2114,10 +2272,10 @@ if __name__ == "__main__":
       </Paper>
 
       {/* Main Content - Side by Side Layout */}
-      <Box sx={{ display: 'flex', gap: 3, position: 'relative', alignItems: 'flex-start', minHeight: '600px' }}>
+      <Box sx={{ display: 'flex', gap: 3, position: 'relative', alignItems: 'flex-start' }}>
         {/* Left Side - Code Display */}
         <Box sx={{ flex: 1.4, position: 'relative', zIndex: 10, minWidth: 0 }}>
-          <Paper elevation={2} sx={{ p: 2, bgcolor: 'grey.900', height: 'fit-content', width: '100%' }}>
+          <Paper elevation={2} sx={{ p: 2, bgcolor: 'grey.900', minHeight: '100vh', width: '100%' }}>
             {/* Code Display Header with Controls */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem' }}>
@@ -2162,8 +2320,8 @@ if __name__ == "__main__":
               sx={{
                 borderRadius: 1,
                 p: 3,
-                height: isFullscreen ? '90vh' : `${codeMaxHeight}px`,
-                maxHeight: isFullscreen ? '90vh' : `${codeMaxHeight}px`,
+                height: isFullscreen ? '100vh' : `${codeMaxHeight}px`,
+                maxHeight: isFullscreen ? 'none' : `${codeMaxHeight}px`,
                 overflow: 'auto',
                 fontFamily: 'monospace',
                 fontSize: `${fontSize}rem`,
@@ -2184,12 +2342,12 @@ if __name__ == "__main__":
                 textAlign: 'right',
                 flexShrink: 0
               }}>
-                {Array.from({length: 110}, (_, index) => (
+                {Array.from({length: 255}, (_, index) => (
                   <div 
                     key={index} 
                     style={{ 
                       lineHeight: '1.4',
-                      color: index < exampleCode.split('\n').length ? '#cbd5e0' : '#555',
+                      color: '#cbd5e0',
                       minHeight: `${fontSize * 1.4}rem`,
                       display: 'flex',
                       alignItems: 'center',
@@ -2214,7 +2372,7 @@ if __name__ == "__main__":
                   fontFamily: 'monospace',
                   fontSize: `${fontSize}rem`
                 }}>
-                  {Array.from({length: 110}, (_, index) => {
+                  {Array.from({length: 255}, (_, index) => {
                     const codeLines = exampleCode.split('\n');
                     const line = index < codeLines.length ? codeLines[index] : '';
                     
@@ -2393,7 +2551,15 @@ if __name__ == "__main__":
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : (
-                        file.name.toLowerCase()
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSingleClick(file.id, file.name.toLowerCase());
+                          }}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {file.name.toLowerCase()}
+                        </span>
                       )
                     }
                     onDoubleClick={() => handleDoubleClick(file.id, file.name.toLowerCase())}
