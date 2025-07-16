@@ -64,9 +64,11 @@ const PythonFileIcon = () => (
 );
 
 // Enhanced code editor component with inline editing
-const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
+const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
   const [hoveredLine, setHoveredLine] = useState(null);
   const [isEditingLine, setIsEditingLine] = useState(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [editingSegment, setEditingSegment] = useState(null);
   const lines = content.split('\n');
   
   const handleLineEdit = (lineNumber, newValue) => {
@@ -74,10 +76,347 @@ const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
     updatedLines[lineNumber] = newValue;
     onChange(updatedLines.join('\n'));
   };
+
+  const handleSegmentEdit = (lineNumber, segmentValue) => {
+    const updatedLines = [...lines];
+    const line = updatedLines[lineNumber];
+    
+    // Replace the content inside load_file() with the new value
+    const updatedLine = line.replace(/load_file\(f"[^"]*"\)/, `load_file(f"${segmentValue}")`);
+    updatedLines[lineNumber] = updatedLine;
+    onChange(updatedLines.join('\n'));
+  };
   
   const isEditableLine = (lineNumber) => {
-    // Lines 6-8 and 38 are editable (0-indexed, so 5-7 and 37)
-    return [5, 6, 7, 37].includes(lineNumber);
+    // If disabled, no lines are editable
+    if (disabled) {
+      return false;
+    }
+    // If editableLines is provided, use it; otherwise use default lines
+    if (editableLines) {
+      return editableLines.includes(lineNumber);
+    }
+    // Lines 6-9 and 38 are editable (0-indexed, so 5-8 and 37)
+    return [5, 6, 7, 8, 37].includes(lineNumber);
+  };
+
+  const hasLoadFileCall = (lineNumber) => {
+    return lines[lineNumber] && lines[lineNumber].includes('load_file(f"');
+  };
+
+  const getLoadFileSegment = (line) => {
+    const match = line.match(/load_file\(f"([^"]*)"\)/);
+    return match ? match[1] : '';
+  };
+
+  const getLoadFilePrefix = (line) => {
+    const match = line.match(/load_file\(f"([^"]*){filename}"\)/);
+    if (match) {
+      const fullPath = match[1];
+      return fullPath.replace('{filename}', '');
+    }
+    return '';
+  };
+
+  const renderLineWithInlineEdit = (line, lineNumber) => {
+    if (hasLoadFileCall(lineNumber) && isEditableLine(lineNumber)) {
+      const beforeLoadFile = line.substring(0, line.indexOf('load_file(f"'));
+      const afterLoadFile = line.substring(line.indexOf('")') + 2);
+      
+      // Check if this line contains {filename} pattern
+      if (line.includes('{filename}')) {
+        const currentPrefix = getLoadFilePrefix(line);
+        
+        return (
+          <span>
+            {beforeLoadFile}
+            <span style={{ color: '#e2e8f0' }}>load_file(f&lt;quot;&gt;</span>
+            <span
+              style={{
+                backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                color: '#ffd700',
+                padding: '2px 4px',
+                borderRadius: '3px',
+                cursor: 'text',
+                border: '2px solid rgba(255, 215, 0, 0.5)',
+                display: 'inline-block',
+                minWidth: '120px',
+                maxWidth: '200px',
+                position: 'relative'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingSegment(lineNumber);
+              }}
+              title="Click to edit the path prefix (e.g., add 'data\\' before filename)"
+            >
+              {editingSegment === lineNumber ? (
+                <input
+                  type="text"
+                  value={currentPrefix}
+                  onChange={(e) => {
+                    const newPrefix = e.target.value;
+                    const updatedLine = line.replace(
+                      /load_file\(f"[^"]*{filename}"\)/,
+                      `load_file(f"${newPrefix}{filename}")`
+                    );
+                    const updatedLines = [...lines];
+                    updatedLines[lineNumber] = updatedLine;
+                    onChange(updatedLines.join('\n'));
+                  }}
+                  onBlur={() => setEditingSegment(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === 'Escape') {
+                      setEditingSegment(null);
+                    }
+                  }}
+                  autoFocus
+                  placeholder="data\\"
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#ffd700',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    width: '100%',
+                    minWidth: '120px'
+                  }}
+                />
+              ) : (
+                <span>
+                  {currentPrefix || (
+                    <span style={{ 
+                      color: 'rgba(255, 215, 0, 0.5)',
+                      fontStyle: 'italic'
+                    }}>
+                      [path prefix]
+                    </span>
+                  )}
+                </span>
+              )}
+            </span>
+            <span style={{ color: '#e2e8f0' }}>{"{"}</span>
+            <span style={{ color: '#8bc34a' }}>filename</span>
+            <span style={{ color: '#e2e8f0' }}>{"}"}</span>
+            <span style={{ color: '#e2e8f0' }}>{")"}</span>
+            {afterLoadFile}
+          </span>
+        );
+      } else {
+        // Fallback for other load_file patterns
+        const segmentValue = getLoadFileSegment(line);
+        
+        return (
+          <span>
+            {beforeLoadFile}
+            <span style={{ color: '#e2e8f0' }}>load_file(f&lt;quot;&gt;</span>
+            <span
+              style={{
+                backgroundColor: 'rgba(255, 215, 0, 0.2)',
+                color: '#ffd700',
+                padding: '2px 4px',
+                borderRadius: '3px',
+                cursor: 'text',
+                border: '1px solid rgba(255, 215, 0, 0.5)',
+                display: 'inline-block',
+                minWidth: '150px',
+                maxWidth: '300px'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingSegment(lineNumber);
+              }}
+            >
+              {editingSegment === lineNumber ? (
+                <input
+                  type="text"
+                  value={segmentValue}
+                  onChange={(e) => handleSegmentEdit(lineNumber, e.target.value)}
+                  onBlur={() => setEditingSegment(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === 'Escape') {
+                      setEditingSegment(null);
+                    }
+                  }}
+                  autoFocus
+                  style={{
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#ffd700',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    width: '100%',
+                    minWidth: '150px'
+                  }}
+                />
+              ) : (
+                segmentValue || 'filename'
+              )}
+            </span>
+            <span style={{ color: '#e2e8f0' }}>{")"}</span>
+            {afterLoadFile}
+          </span>
+        );
+      }
+    } else if (line.includes('from ') && line.includes(' import ') && isEditableLine(lineNumber)) {
+      // Handle import line with two editable blocks
+      const fromIndex = line.indexOf('from ');
+      const importIndex = line.indexOf(' import ');
+      
+      const beforeFrom = line.substring(0, fromIndex);
+      const afterImport = line.substring(importIndex + 8);
+      
+      // Extract current values - handle empty spaces properly
+      const modulePattern = /from\s+([^\s]*)\s+import/;
+      const importPattern = /import\s+(.*)$/;
+      
+      const moduleNameMatch = line.match(modulePattern);
+      const importItemsMatch = line.match(importPattern);
+      
+      const currentModuleName = moduleNameMatch ? moduleNameMatch[1] : '';
+      const currentImportItems = importItemsMatch ? importItemsMatch[1].trim() : '';
+      
+      return (
+        <span>
+          {beforeFrom}
+          <span style={{ color: '#e2e8f0' }}>from </span>
+          <span
+            style={{
+              backgroundColor: 'rgba(255, 215, 0, 0.2)',
+              color: '#ffd700',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              cursor: 'text',
+              border: '2px solid rgba(255, 215, 0, 0.5)',
+              display: 'inline-block',
+              minWidth: '100px',
+              maxWidth: '200px',
+              marginRight: '4px'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingSegment(`${lineNumber}-module`);
+            }}
+            title="Click to edit the module name"
+          >
+            {editingSegment === `${lineNumber}-module` ? (
+              <input
+                type="text"
+                value={currentModuleName}
+                onChange={(e) => {
+                  const newModuleName = e.target.value;
+                  const updatedLine = line.replace(
+                    /from\s+[^\s]*\s+import/,
+                    `from ${newModuleName} import`
+                  );
+                  const updatedLines = [...lines];
+                  updatedLines[lineNumber] = updatedLine;
+                  onChange(updatedLines.join('\n'));
+                }}
+                onBlur={() => setEditingSegment(null)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    setEditingSegment(null);
+                  }
+                }}
+                autoFocus
+                placeholder="module_name"
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#ffd700',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  width: '100%',
+                  minWidth: '100px'
+                }}
+              />
+            ) : (
+              <span>
+                {currentModuleName || (
+                  <span style={{ 
+                    color: 'rgba(255, 215, 0, 0.5)',
+                    fontStyle: 'italic'
+                  }}>
+                    [module]
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
+          <span style={{ color: '#e2e8f0' }}> import </span>
+          <span
+            style={{
+              backgroundColor: 'rgba(255, 215, 0, 0.2)',
+              color: '#ffd700',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              cursor: 'text',
+              border: '2px solid rgba(255, 215, 0, 0.5)',
+              display: 'inline-block',
+              minWidth: '120px',
+              maxWidth: '250px'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingSegment(`${lineNumber}-import`);
+            }}
+            title="Click to edit the import items"
+          >
+            {editingSegment === `${lineNumber}-import` ? (
+              <input
+                type="text"
+                value={currentImportItems}
+                onChange={(e) => {
+                  const newImportItems = e.target.value;
+                  const updatedLine = line.replace(
+                    /import\s+.*$/,
+                    `import ${newImportItems}`
+                  );
+                  const updatedLines = [...lines];
+                  updatedLines[lineNumber] = updatedLine;
+                  onChange(updatedLines.join('\n'));
+                }}
+                onBlur={() => setEditingSegment(null)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    setEditingSegment(null);
+                  }
+                }}
+                autoFocus
+                placeholder="function1, function2"
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#ffd700',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  width: '100%',
+                  minWidth: '120px'
+                }}
+              />
+            ) : (
+              <span>
+                {currentImportItems || (
+                  <span style={{ 
+                    color: 'rgba(255, 215, 0, 0.5)',
+                    fontStyle: 'italic'
+                  }}>
+                    [imports]
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
+          {afterImport}
+        </span>
+      );
+    }
+    return line;
   };
   
   const handleLineClick = (lineNumber) => {
@@ -90,6 +429,10 @@ const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
     if (e.key === 'Enter' || e.key === 'Escape') {
       setIsEditingLine(null);
     }
+  };
+
+  const handleScroll = (e) => {
+    setScrollTop(e.target.scrollTop);
   };
   
   return (
@@ -122,7 +465,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
         <Box sx={{
           padding: '8px 8px 8px 4px',
           position: 'absolute',
-          top: 0,
+          top: -scrollTop,
           left: 0,
           right: 0,
           minHeight: '100%'
@@ -163,7 +506,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
       </Box>
       
       {/* Code Content Container */}
-      <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }}>
+      <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }} onScroll={handleScroll}>
         <Box sx={{ padding: '8px 12px' }}>
           {lines.map((line, index) => (
             <div
@@ -206,8 +549,8 @@ const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
                 />
               ) : (
                 <>
-                  {line || ' '}
-                  {isEditableLine(index) && hoveredLine === index && !disabled && (
+                  {renderLineWithInlineEdit(line, index) || ' '}
+                  {isEditableLine(index) && hoveredLine === index && !disabled && !hasLoadFileCall(index) && (
                     <Box
                       component="span"
                       sx={{
@@ -283,6 +626,7 @@ const CodeRefactoringInterface = () => {
     6: '',
     7: '',
     8: '',
+    9: '',
     38: ''
   });
 
@@ -294,7 +638,8 @@ const CodeRefactoringInterface = () => {
     setEditableLines({
       6: lines[6] || 'from tifffile import imread',
       7: lines[7] || ' ',
-      8: lines[8] || ' ',
+      8: 'from  import ',
+      9: ' ',
       38: lines[38] || '    blur_factor = 1'
     });
   }, []);
@@ -316,7 +661,7 @@ const CodeRefactoringInterface = () => {
       
       // Add main.py file with dynamic content
       const unassignedFunctions = getUnassignedFunctions();
-      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
+      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3'].filter(group => 
         !files.some(f => f.codeBlocks?.some(block => block.name === group))
       );
       
@@ -396,7 +741,7 @@ const CodeRefactoringInterface = () => {
   useEffect(() => {
     if (currentView === 'organize' && organizationFiles.length > 0) {
       const unassignedFunctions = getUnassignedFunctions();
-      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
+      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3'].filter(group => 
         !files.some(f => f.codeBlocks?.some(block => block.name === group))
       );
       
@@ -742,7 +1087,6 @@ if __name__ == "__main__":
 
   // Enhanced helper function to generate main.py content with editable lines
   const generateMainPyContentWithEditableLines = () => {
-    const assignedFunctions = files.flatMap(f => f.functions);
     const assignedCodeBlocks = files.flatMap(f => f.codeBlocks?.map(block => block.name) || []);
     
     let mainContent = '';
@@ -751,10 +1095,15 @@ if __name__ == "__main__":
     // Add imports (lines 0-5)
     mainContent += lines.slice(0, 6).join('\n') + '\n';
     
-    // Add editable lines 6-8 (these will be the import lines we want to edit)
-    mainContent += (editableLines[6] || lines[6] || 'from tifffile import imread') + '\n';
-    mainContent += (editableLines[7] || lines[7] || ' ') + '\n';
-    mainContent += (editableLines[8] || lines[8] || ' ') + '\n';
+    // Add editable lines 6-7 (existing import lines)
+    mainContent += (lines[6] || 'from tifffile import imread') + '\n';
+    mainContent += (lines[7] || ' ') + '\n';
+    
+    // Add new editable line 8 with the format "from [module] import [items]"
+    mainContent += 'from  import \n';
+    
+    // Add another editable line 9 
+    mainContent += ' \n';
     
     // Add import statements for refactored files
     const refactoredFiles = files.filter(f => f.functions.length > 0 || (f.codeBlocks && f.codeBlocks.length > 0));
@@ -769,36 +1118,15 @@ if __name__ == "__main__":
       mainContent += '\n';
     }
     
-    // Define function ranges in the original code
-    const functionRanges = {
-      'load_image': [8, 20],
-      'normalize_image': [23, 30],
-      'downsample_image': [32, 34],
-      'smooth_image': [38, 40],
-      'preprocess_image': [43, 48],
-      'plot_images': [51, 64]
-    };
-    
-    // Define code block ranges
+    // Define code block ranges based on current highlighting (adjusted for new lines)
     const codeBlockRanges = {
-      'Group 2': [8, 20], 
-      'Group 1': [23, 38],
-      'Group 3': [47, 53],
-      'Group 4': [57, 71]
+      'Group 1': [9, 66], // Lines 010-067 (load functions only)
+      'Group 2': [96, 143], // Lines 097-144 (image processing functions)
+      'Group 3': [146, 178] // Lines 147-179 (plotting functions)
     };
     
     // Create a set of all assigned line ranges to exclude
     const excludedLines = new Set();
-    
-    // Mark lines from assigned functions
-    assignedFunctions.forEach(functionName => {
-      if (functionRanges[functionName]) {
-        const [start, end] = functionRanges[functionName];
-        for (let i = start; i <= end; i++) {
-          excludedLines.add(i);
-        }
-      }
-    });
     
     // Mark lines from assigned code blocks
     assignedCodeBlocks.forEach(blockName => {
@@ -810,65 +1138,34 @@ if __name__ == "__main__":
       }
     });
     
-    // Add remaining code (lines 9-37) excluding assigned content
-    let currentSection = '';
-    let inAssignedSection = false;
-    
-    for (let i = 9; i < 38; i++) {
-      const isExcluded = excludedLines.has(i);
+    // Process all lines from line 9 to the end (excluding the main execution block)
+    // Skip the first few lines since we've already added them above
+    for (let i = 11; i < 181; i++) { // Start from line 11 to account for the new lines we added
+      const originalLineIndex = i - 2; // Adjust for the 2 new lines we added
+      const isExcluded = excludedLines.has(originalLineIndex);
       
-      if (!isExcluded && inAssignedSection) {
-        if (currentSection.trim()) {
-          mainContent += currentSection + '\n';
+      if (!isExcluded && lines[originalLineIndex] !== undefined) {
+        // Add editable line 38 if we reach it (adjusted for new lines)
+        if (originalLineIndex === 38) {
+          mainContent += (lines[originalLineIndex] || '    blur_factor = 1') + '\n';
+        } else {
+          mainContent += lines[originalLineIndex] + '\n';
         }
-        currentSection = '';
-        inAssignedSection = false;
-      }
-      
-      if (!isExcluded) {
-        currentSection += lines[i] + '\n';
-      } else {
-        inAssignedSection = true;
       }
     }
     
-    // Add any remaining content before line 38
-    if (currentSection.trim() && !inAssignedSection) {
-      mainContent += currentSection + '\n';
-    }
-    
-    // Add editable line 38
-    mainContent += (editableLines[38] || lines[38] || '    blur_factor = 1') + '\n';
-    
-    // Continue with remaining code after line 38
-    currentSection = '';
-    inAssignedSection = false;
-    
-    for (let i = 39; i < 74; i++) {
-      const isExcluded = excludedLines.has(i);
-      
-      if (!isExcluded && inAssignedSection) {
-        if (currentSection.trim()) {
-          mainContent += currentSection + '\n';
+    // Always add the main execution block (lines 181 onwards) with editable load_file line
+    mainContent += '\n';
+    for (let i = 181; i < lines.length; i++) {
+      if (lines[i] !== undefined) {
+        let line = lines[i];
+        // Make the load_file line editable by ensuring it has the {filename} pattern
+        if (line.includes('load_file(f"{filename}")')) {
+          line = '        image, image_parameters = load_file(f"{filename}")';
         }
-        currentSection = '';
-        inAssignedSection = false;
-      }
-      
-      if (!isExcluded) {
-        currentSection += lines[i] + '\n';
-      } else {
-        inAssignedSection = true;
+        mainContent += line + '\n';
       }
     }
-    
-    // Add any remaining content
-    if (currentSection.trim() && !inAssignedSection) {
-      mainContent += currentSection + '\n';
-    }
-    
-    // Always add the main execution block (lines 74 onwards)
-    mainContent += lines.slice(74).join('\n');
     
     return mainContent;
   };
@@ -1034,12 +1331,54 @@ if __name__ == "__main__":
                 </Typography>
               </Box>
               
+              {/* Editable Lines Info Banner */}
+              <Box sx={{ 
+                p: 2, 
+                bgcolor: 'rgba(255, 215, 0, 0.1)', 
+                borderLeft: '4px solid #ffd700',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
+              }}>
+                <EditIcon sx={{ color: '#ffd700', fontSize: '1.2rem' }} />
+                <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold' }}>
+                  💡 Yellow highlighted sections are editable:<br />
+                  • Line 8: Click on the first block to edit module name, click on the second block to edit import items (from [module] import [items])<br />
+                  • Line 9: Click to add additional import or code<br />
+                  • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
+                </Typography>
+              </Box>
+
               {/* Enhanced Code Editor */}
               <Box sx={{ p: 2, bgcolor: 'grey.900' }}>
                 <EnhancedCodeEditor
                   content={mainPyContent}
                   onChange={setMainPyContent}
-                  disabled={!isMainPyEditable}
+                  disabled={false}
+                  editableLines={(() => {
+                    const lines = mainPyContent.split('\n');
+                    const editableIndexes = [];
+                    
+                    // Make line 8 editable (the "from __ import __" line)
+                    if (lines[8] && lines[8].includes('from ') && lines[8].includes(' import ')) {
+                      editableIndexes.push(8);
+                    }
+                    
+                    // Make line 9 editable (the blank line after the import)
+                    if (lines[9] !== undefined) {
+                      editableIndexes.push(9);
+                    }
+                    
+                    // Find line with load_file call containing {filename}
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].includes('load_file(f"') && lines[i].includes('{filename}')) {
+                        editableIndexes.push(i);
+                        break;
+                      }
+                    }
+                    
+                    return editableIndexes;
+                  })()}
                 />
               </Box>
               
@@ -1073,7 +1412,7 @@ if __name__ == "__main__":
             <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
               <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
                 Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
-                Lines 6-8 and 38 are highlighted as editable - click on them to modify the code.
+                Line 8 contains two editable blocks for import statement (module name and import items), line 9 is editable for additional imports, and the path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
               </Typography>
             </Paper>
           </Box>
@@ -1306,14 +1645,12 @@ if __name__ == "__main__":
 
   const getCodeBlockContent = (groupName) => {
     const lines = exampleCode.split('\n');
-    if (groupName === 'Group 2') {
-      return lines.slice(8, 21).join('\n'); // lines 9-21
-    } else if (groupName === 'Group 1') {
-      return lines.slice(23, 39).join('\n'); // lines 24-39
+    if (groupName === 'Group 1') {
+      return lines.slice(9, 67).join('\n'); // lines 10-67 (load functions only)
+    } else if (groupName === 'Group 2') {
+      return lines.slice(96, 144).join('\n'); // lines 97-144 (image processing functions)
     } else if (groupName === 'Group 3') {
-      return lines.slice(47, 54).join('\n'); // lines 48-54
-    } else if (groupName === 'Group 4') {
-      return lines.slice(57, 72).join('\n'); // lines 58-72
+      return lines.slice(146, 179).join('\n'); // lines 147-179 (plotting functions)
     }
     return '';
   };
@@ -1400,12 +1737,18 @@ if __name__ == "__main__":
   };
 
   const handleSingleClick = (fileId, currentName) => {
-    // Only enable editing if the file is already selected
+    console.log('Single click:', fileId, currentName, 'selectedFile:', selectedFile); // Debug log
+    // If file is already selected, enable editing
     if (selectedFile === fileId) {
+      console.log('Enabling edit mode for:', fileId); // Debug log
       setEditingFile(fileId);
       // Remove .py extension for editing
       const nameWithoutExtension = currentName.replace(/\.py$/i, '');
       setEditingName(nameWithoutExtension);
+    } else {
+      // If not selected, select it first
+      console.log('Selecting file:', fileId); // Debug log
+      setSelectedFile(fileId);
     }
   };
 
@@ -1415,12 +1758,39 @@ if __name__ == "__main__":
 
   const handleNameSubmit = (e) => {
     if (e.key === 'Enter' || e.type === 'blur') {
-      if (editingName.trim()) {
+      console.log('handleNameSubmit called with editingFile:', editingFile, 'editingName:', editingName); // Debug log
+      // Allow saving with any name (including same name)
+      const trimmedName = editingName.trim();
+      if (trimmedName.length > 0) {
         // Always append .py extension in lowercase
-        const finalName = editingName.trim().toLowerCase() + '.py';
-        setFiles(files.map(f => f.id === editingFile ? { ...f, name: finalName } : f));
-        // Update content with new file name
-        setTimeout(() => updateFileContent(editingFile), 0);
+        const finalName = trimmedName.toLowerCase() + '.py';
+        console.log('Saving file name:', finalName); // Debug log
+        console.log('Current files before update:', files); // Debug log
+        const updatedFiles = files.map(f => f.id === editingFile ? { ...f, name: finalName } : f);
+        console.log('Updated files:', updatedFiles); // Debug log
+        setFiles(updatedFiles);
+        // Update content with new file name - use the updated file data
+        const updatedFile = updatedFiles.find(f => f.id === editingFile);
+        if (updatedFile) {
+          let content = `# ${updatedFile.name}\n\n`;
+          
+          // Add functions content
+          updatedFile.functions.forEach(functionName => {
+            content += `# Function: ${functionName}\n`;
+            content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+          });
+          
+          // Add code blocks content
+          if (updatedFile.codeBlocks) {
+            updatedFile.codeBlocks.forEach(block => {
+              content += `# Code Block: ${block.name}\n`;
+              content += block.content + '\n\n';
+            });
+          }
+          
+          // Update the content immediately
+          setFiles(prevFiles => prevFiles.map(f => f.id === editingFile ? { ...f, content } : f));
+        }
       }
       setEditingFile(null);
       setEditingName('');
@@ -2071,28 +2441,13 @@ if __name__ == "__main__":
                         <Typography variant="subtitle2" gutterBottom>
                           File Content:
                         </Typography>
-                        <Paper 
-                          elevation={1} 
-                          sx={{ 
-                            p: 2, 
-                            bgcolor: '#1a1a1a', 
-                            borderRadius: 1,
-                            border: '1px solid #333',
-                            maxHeight: 300,
-                            overflow: 'auto'
-                          }}
-                        >
-                          <pre style={{ 
-                            color: '#e2e8f0', 
-                            margin: 0, 
-                            whiteSpace: 'pre-wrap', 
-                            fontFamily: 'monospace',
-                            fontSize: '0.75rem',
-                            lineHeight: '1.4'
-                          }}>
-                            {selectedOrgFile.content}
-                          </pre>
-                        </Paper>
+                        <Box sx={{ maxHeight: 400, overflow: 'hidden' }}>
+                          <EnhancedCodeEditor
+                            content={selectedOrgFile.content}
+                            onChange={() => {}} // Read-only in organize view
+                            disabled={true}
+                          />
+                        </Box>
                       </Box>
                     )}
                   </Box>
@@ -2282,17 +2637,14 @@ if __name__ == "__main__":
                 Example Script: (69 lines of code, 110 lines total)
               </Typography>
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Typography variant="caption" sx={{ color: '#48bb78', fontSize: '0.7rem' }}>
-                  Group 2
-                </Typography>
                 <Typography variant="caption" sx={{ color: '#8b5cf6', fontSize: '0.7rem' }}>
                   Group 1
                 </Typography>
+                <Typography variant="caption" sx={{ color: '#48bb78', fontSize: '0.7rem' }}>
+                  Group 2
+                </Typography>
                 <Typography variant="caption" sx={{ color: '#ff9f40', fontSize: '0.7rem' }}>
                   Group 3
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#ff6384', fontSize: '0.7rem' }}>
-                  Group 4
                 </Typography>
               </Box>
             </Box>
@@ -2380,22 +2732,18 @@ if __name__ == "__main__":
                     let groupLabel = '';
                     let isGroupStart = false;
                     
-                    if (index >= 8 && index <= 20) {
-                      backgroundColor = 'rgba(72, 187, 120, 0.25)'; // Green
-                      groupLabel = 'Group 2';
-                      isGroupStart = index === 8;
-                    } else if (index >= 23 && index <= 38) {
+                    if (index >= 9 && index <= 66) { // Lines 010-067
                       backgroundColor = 'rgba(139, 92, 246, 0.25)'; // Purple
                       groupLabel = 'Group 1';
-                      isGroupStart = index === 23;
-                    } else if (index >= 47 && index <= 53) {
+                      isGroupStart = index === 9;
+                    } else if (index >= 96 && index <= 143) { // Lines 097-144
+                      backgroundColor = 'rgba(72, 187, 120, 0.25)'; // Green
+                      groupLabel = 'Group 2';
+                      isGroupStart = index === 96;
+                    } else if (index >= 146 && index <= 178) { // Lines 147-179
                       backgroundColor = 'rgba(255, 159, 64, 0.25)'; // Orange
                       groupLabel = 'Group 3';
-                      isGroupStart = index === 47;
-                    } else if (index >= 57 && index <= 71) {
-                      backgroundColor = 'rgba(255, 99, 132, 0.25)'; // Pink/Red
-                      groupLabel = 'Group 4';
-                      isGroupStart = index === 57;
+                      isGroupStart = index === 146;
                     }
                     
                     return (
@@ -2407,7 +2755,7 @@ if __name__ == "__main__":
                               left: '-16px',
                               right: '-16px',
                               top: '-2px',
-                              height: `${(groupLabel === 'Group 2' ? 13 : groupLabel === 'Group 1' ? 16 : groupLabel === 'Group 3' ? 7 : 15) * fontSize * 1.4 + 4}rem`,
+                              height: `${(groupLabel === 'Group 1' ? 58 : groupLabel === 'Group 2' ? 48 : groupLabel === 'Group 3' ? 33 : 15) * fontSize * 1.4 + 4}rem`,
                               backgroundColor: 'transparent',
                               cursor: 'move',
                               zIndex: 10,
@@ -2428,10 +2776,10 @@ if __name__ == "__main__":
                               e.target.style.boxShadow = 'none';
                             }}
                             title={`Drag ${groupLabel} (${
-                              groupLabel === 'Group 2' ? 'lines 9-21' : 
-                              groupLabel === 'Group 1' ? 'lines 24-39' :
-                              groupLabel === 'Group 3' ? 'lines 48-54' :
-                              'lines 58-72'
+                              groupLabel === 'Group 1' ? 'lines 010-067' : 
+                              groupLabel === 'Group 2' ? 'lines 097-144' :
+                              groupLabel === 'Group 3' ? 'lines 147-179' :
+                              'lines'
                             })`}
                           />
                         )}
