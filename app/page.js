@@ -735,7 +735,7 @@ if __name__ == "__main__":
             {'{Activity Title}'}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Some of the changes you've made require that you update main.py to ensure that 
+            Some of the changes you&apos;ve made require that you update main.py to ensure that 
             any imports and file paths reflect your new directory structure. This is okay, and a{' '}
             <strong>totally normal part of refactoring!</strong> Click into the main.py tab to update the script.
           </Typography>
