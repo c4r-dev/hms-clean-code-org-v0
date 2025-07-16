@@ -63,9 +63,183 @@ const PythonFileIcon = () => (
   </Box>
 );
 
+// Enhanced code editor component with inline editing
+const EnhancedCodeEditor = ({ content, onChange, disabled }) => {
+  const [hoveredLine, setHoveredLine] = useState(null);
+  const [isEditingLine, setIsEditingLine] = useState(null);
+  const lines = content.split('\n');
+  
+  const handleLineEdit = (lineNumber, newValue) => {
+    const updatedLines = [...lines];
+    updatedLines[lineNumber] = newValue;
+    onChange(updatedLines.join('\n'));
+  };
+  
+  const isEditableLine = (lineNumber) => {
+    // Lines 6-8 and 38 are editable (0-indexed, so 5-7 and 37)
+    return [5, 6, 7, 37].includes(lineNumber);
+  };
+  
+  const handleLineClick = (lineNumber) => {
+    if (isEditableLine(lineNumber) && !disabled) {
+      setIsEditingLine(lineNumber);
+    }
+  };
+  
+  const handleLineKeyDown = (e, lineNumber) => {
+    if (e.key === 'Enter' || e.key === 'Escape') {
+      setIsEditingLine(null);
+    }
+  };
+  
+  return (
+    <Box sx={{ 
+      border: '2px solid #4a5568',
+      borderRadius: '6px',
+      overflow: 'hidden',
+      display: 'flex',
+      height: '500px',
+      bgcolor: '#1a202c'
+    }}>
+      {/* Line Numbers Container */}
+      <Box 
+        sx={{ 
+          color: '#a0aec0',
+          borderRight: '2px solid #4a5568',
+          userSelect: 'none',
+          minWidth: '4rem',
+          width: '4rem',
+          textAlign: 'right',
+          flexShrink: 0,
+          fontFamily: 'monospace',
+          fontSize: '0.8rem',
+          lineHeight: '1.4',
+          bgcolor: '#2d3748',
+          overflow: 'hidden',
+          position: 'relative'
+        }}
+      >
+        <Box sx={{
+          padding: '8px 8px 8px 4px',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          minHeight: '100%'
+        }}>
+          {lines.map((_, index) => (
+            <div 
+              key={index}
+              style={{ 
+                height: '1.4em',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                color: isEditableLine(index) ? '#ffd700' : '#a0aec0',
+                fontWeight: isEditableLine(index) ? 'bold' : 'normal',
+                fontSize: '0.8rem',
+                fontFamily: 'monospace',
+                lineHeight: '1.4',
+                backgroundColor: isEditableLine(index) ? 'rgba(255, 215, 0, 0.1)' : 'transparent'
+              }}
+            >
+              {String(index + 1).padStart(2, '0')}
+              {isEditableLine(index) && (
+                <Box
+                  component="span"
+                  sx={{
+                    ml: 0.5,
+                    color: '#ffd700',
+                    fontSize: '0.6rem',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  ✎
+                </Box>
+              )}
+            </div>
+          ))}
+        </Box>
+      </Box>
+      
+      {/* Code Content Container */}
+      <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }}>
+        <Box sx={{ padding: '8px 12px' }}>
+          {lines.map((line, index) => (
+            <div
+              key={index}
+              style={{
+                minHeight: '1.4em',
+                lineHeight: '1.4',
+                fontFamily: 'monospace',
+                fontSize: '0.8rem',
+                color: '#e2e8f0',
+                backgroundColor: isEditableLine(index) ? 'rgba(255, 215, 0, 0.1)' : 'transparent',
+                padding: '0 4px',
+                borderRadius: '2px',
+                position: 'relative',
+                cursor: isEditableLine(index) && !disabled ? 'text' : 'default',
+                border: isEditableLine(index) ? '1px solid rgba(255, 215, 0, 0.3)' : '1px solid transparent'
+              }}
+              onClick={() => handleLineClick(index)}
+              onMouseEnter={() => setHoveredLine(index)}
+              onMouseLeave={() => setHoveredLine(null)}
+            >
+              {isEditingLine === index ? (
+                <input
+                  type="text"
+                  value={line}
+                  onChange={(e) => handleLineEdit(index, e.target.value)}
+                  onKeyDown={(e) => handleLineKeyDown(e, index)}
+                  onBlur={() => setIsEditingLine(null)}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    outline: 'none',
+                    color: '#e2e8f0',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    lineHeight: '1.4'
+                  }}
+                />
+              ) : (
+                <>
+                  {line || ' '}
+                  {isEditableLine(index) && hoveredLine === index && !disabled && (
+                    <Box
+                      component="span"
+                      sx={{
+                        position: 'absolute',
+                        right: '4px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        color: '#ffd700',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: '1px 4px',
+                        borderRadius: '2px',
+                        pointerEvents: 'none'
+                      }}
+                    >
+                      Click to edit
+                    </Box>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
 const CodeRefactoringInterface = () => {
   const router = useRouter();
-  const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring' or 'organize'
+  const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', or 'final'
   const [files, setFiles] = useState([
     { id: 1, name: 'file 1.py', color: 'primary', functions: [], codeBlocks: [], content: '' }
   ]);
@@ -94,6 +268,173 @@ const CodeRefactoringInterface = () => {
   const [contextMenu, setContextMenu] = useState({ mouseX: null, mouseY: null, item: null });
   const [dragOverFolder, setDragOverFolder] = useState(null);
   const [selectedOrgFile, setSelectedOrgFile] = useState(null);
+  const [errorDialog, setErrorDialog] = useState({ open: false, message: '' });
+
+  // Final view state
+  const [finalView, setFinalView] = useState('directory'); // 'directory' or 'main'
+  const [mainPyContent, setMainPyContent] = useState('');
+  const [isMainPyEditable, setIsMainPyEditable] = useState(true);
+
+  // File location tracking state
+  const [fileLocations, setFileLocations] = useState({});
+
+  // Editable lines state
+  const [editableLines, setEditableLines] = useState({
+    6: '',
+    7: '',
+    8: '',
+    38: ''
+  });
+
+  // All useEffect hooks must be at the top, before any conditional logic
+  
+  // Initialize editable lines
+  useEffect(() => {
+    const lines = exampleCode.split('\n');
+    setEditableLines({
+      6: lines[6] || 'from tifffile import imread',
+      7: lines[7] || ' ',
+      8: lines[8] || ' ',
+      38: lines[38] || '    blur_factor = 1'
+    });
+  }, []);
+
+  // Initialize organization files when transitioning from refactoring to organize
+  useEffect(() => {
+    if (currentView === 'organize') {
+      // Convert refactored files to project organization format
+      const initialFiles = files.map(file => ({
+        id: file.id,
+        name: file.name,
+        type: 'PY File',
+        description: `Python script with ${file.functions.length} functions${file.codeBlocks?.length ? ` and ${file.codeBlocks.length} code blocks` : ''}`,
+        folder: null,
+        functions: file.functions || [],
+        codeBlocks: file.codeBlocks || [],
+        content: file.content || ''
+      }));
+      
+      // Add main.py file with dynamic content
+      const unassignedFunctions = getUnassignedFunctions();
+      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
+        !files.some(f => f.codeBlocks?.some(block => block.name === group))
+      );
+      
+      const mainFile = {
+        id: 'main',
+        name: 'main.py',
+        type: 'PY File',
+        description: `Main execution script with ${unassignedFunctions.length} unassigned functions${unassignedCodeBlocks.length > 0 ? `, ${unassignedCodeBlocks.length} unassigned code blocks,` : ''} and main execution logic. Automatically imports from refactored files.`,
+        folder: null,
+        functions: unassignedFunctions,
+        codeBlocks: unassignedCodeBlocks.map(name => ({ name, content: '' })),
+        content: generateMainPyContentWithEditableLines()
+      };
+      
+      // Add standard project files
+      const standardFiles = [
+        {
+          id: 'init',
+          name: '__init__.py',
+          type: 'PY File',
+          description: 'Python package initialization file',
+          folder: null,
+          functions: [],
+          codeBlocks: []
+        },
+        {
+          id: 'png',
+          name: '201.png',
+          type: 'IMG File',
+          description: 'Image file',
+          folder: null
+        },
+        {
+          id: 'nd2',
+          name: '201.nd2',
+          type: 'DATA File',
+          description: 'Microscopy data file',
+          folder: null
+        },
+        {
+          id: 'nd2_tail',
+          name: '20191010_tail_01.nd2',
+          type: 'DATA File',
+          description: 'Microscopy data file - tail experiment from 2019',
+          folder: null
+        },
+        {
+          id: 'qpdata',
+          name: '20191010_tail_01.qpdata',
+          type: 'DATA File',
+          description: 'Quantitative phase data file',
+          folder: null
+        },
+        {
+          id: 'tif_vang',
+          name: '20240523_Vang-1_37.tif',
+          type: 'IMG File',
+          description: 'TIFF image file - Vang experiment from 2024',
+          folder: null
+        },
+        {
+          id: 'citations',
+          name: 'citations.txt',
+          type: 'TXT File',
+          description: 'Text file containing citations and references',
+          folder: null
+        }
+      ];
+      
+      const allFiles = [mainFile, ...standardFiles, ...initialFiles];
+      setOrganizationFiles(allFiles);
+      setSelectedOrgFile(allFiles[0]); // Select main.py by default
+    }
+  }, [currentView, files]);
+
+  // Update main.py content when files change in organize view
+  useEffect(() => {
+    if (currentView === 'organize' && organizationFiles.length > 0) {
+      const unassignedFunctions = getUnassignedFunctions();
+      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
+        !files.some(f => f.codeBlocks?.some(block => block.name === group))
+      );
+      
+      const updatedMainFile = {
+        id: 'main',
+        name: 'main.py',
+        type: 'PY File',
+        description: `Main execution script with ${unassignedFunctions.length} unassigned functions${unassignedCodeBlocks.length > 0 ? `, ${unassignedCodeBlocks.length} unassigned code blocks,` : ''} and main execution logic. Automatically imports from refactored files.`,
+        folder: organizationFiles.find(f => f.id === 'main')?.folder || null,
+        functions: unassignedFunctions,
+        codeBlocks: unassignedCodeBlocks.map(name => ({ name, content: '' })),
+        content: generateMainPyContentWithEditableLines()
+      };
+      
+      setOrganizationFiles(prevFiles => 
+        prevFiles.map(file => 
+          file.id === 'main' ? updatedMainFile : file
+        )
+      );
+    }
+  }, [files, currentView, editableLines]);
+
+  // Initialize file locations when organization view loads
+  useEffect(() => {
+    if (currentView === 'organize' && organizationFiles.length > 0) {
+      const initialLocations = updateFileLocations(organizationFiles, folders);
+      setFileLocations(initialLocations);
+      console.log('Initial file locations:', initialLocations);
+    }
+  }, [currentView, organizationFiles, folders]);
+
+  // Update locations when files or folders change
+  useEffect(() => {
+    if (currentView === 'organize') {
+      const newLocations = updateFileLocations(organizationFiles, folders);
+      setFileLocations(newLocations);
+    }
+  }, [organizationFiles, folders, currentView]);
 
   const exampleCode = `import numpy as np
 import matplotlib.pyplot as plt
@@ -189,16 +530,83 @@ if __name__ == "__main__":
 
   const colors = ['primary', 'secondary', 'success', 'error', 'warning', 'info'];
 
-  // Helper function to generate main.py content
-  const generateMainPyContent = () => {
+  // Organization view functions - moved up before useEffect hooks
+  const getFilesInFolder = (folderId) => {
+    return organizationFiles.filter(f => f.folder === folderId);
+  };
+
+  const getRootFiles = () => {
+    return organizationFiles.filter(f => f.folder === null);
+  };
+
+  const getFileIcon = (fileType) => {
+    switch (fileType) {
+      case 'PY File':
+        return <PythonFileIcon />;
+      case 'IMG File':
+        return <ImageIcon sx={{ color: '#4CAF50' }} />;
+      case 'DATA File':
+        return <ImageIcon sx={{ color: '#FF9800' }} />;
+      case 'TXT File':
+        return <InsertDriveFileIcon sx={{ color: '#2196F3' }} />;
+      default:
+        return <InsertDriveFileIcon />;
+    }
+  };
+
+  const getFileTypeLabel = (fileType) => {
+    switch (fileType) {
+      case 'PY File':
+        return 'Python file';
+      case 'IMG File':
+        return 'Image file';
+      case 'DATA File':
+        return 'Data file';
+      case 'TXT File':
+        return 'Text file';
+      default:
+        return 'File';
+    }
+  };
+
+  // File location tracking functions
+  const buildFilePath = (file, folders) => {
+    if (!file.folder) {
+      return '/'; // Root directory
+    }
+    
+    const folder = folders.find(f => f.id === file.folder);
+    if (!folder) {
+      return '/';
+    }
+    
+    // Build the full path by traversing up the folder hierarchy
+    let path = '';
+    let currentFolder = folder;
+    
+    while (currentFolder) {
+      path = `/${currentFolder.name}${path}`;
+      currentFolder = folders.find(f => f.id === currentFolder.parent);
+    }
+    
+    return path || '/';
+  };
+
+  // Enhanced helper function to generate main.py content with editable lines
+  const generateMainPyContentWithEditableLines = () => {
     const assignedFunctions = files.flatMap(f => f.functions);
     const assignedCodeBlocks = files.flatMap(f => f.codeBlocks?.map(block => block.name) || []);
     
     let mainContent = '';
     const lines = exampleCode.split('\n');
     
-    // Add imports (lines 0-6)
-    mainContent += lines.slice(0, 7).join('\n') + '\n\n';
+    // Add imports (lines 0-5)
+    mainContent += lines.slice(0, 6).join('\n') + '\n';
+    
+    // Add editable lines 6-8 (these will be the import lines we want to edit)
+    mainContent += (editableLines[6] || lines[6] || 'from tifffile import imread') + '\n';
+    mainContent += (editableLines[7] || lines[7] || ' ') + '\n';
+    mainContent += (editableLines[8] || lines[8] || ' ') + '\n';
     
     // Add import statements for refactored files
     const refactoredFiles = files.filter(f => f.functions.length > 0 || (f.codeBlocks && f.codeBlocks.length > 0));
@@ -254,15 +662,44 @@ if __name__ == "__main__":
       }
     });
     
-    // Add remaining code (lines 8-73) excluding assigned content
+    // Add remaining code (lines 9-37) excluding assigned content
     let currentSection = '';
     let inAssignedSection = false;
     
-    for (let i = 8; i < 74; i++) {
+    for (let i = 9; i < 38; i++) {
       const isExcluded = excludedLines.has(i);
       
       if (!isExcluded && inAssignedSection) {
-        // We're transitioning from excluded to included content
+        if (currentSection.trim()) {
+          mainContent += currentSection + '\n';
+        }
+        currentSection = '';
+        inAssignedSection = false;
+      }
+      
+      if (!isExcluded) {
+        currentSection += lines[i] + '\n';
+      } else {
+        inAssignedSection = true;
+      }
+    }
+    
+    // Add any remaining content before line 38
+    if (currentSection.trim() && !inAssignedSection) {
+      mainContent += currentSection + '\n';
+    }
+    
+    // Add editable line 38
+    mainContent += (editableLines[38] || lines[38] || '    blur_factor = 1') + '\n';
+    
+    // Continue with remaining code after line 38
+    currentSection = '';
+    inAssignedSection = false;
+    
+    for (let i = 39; i < 74; i++) {
+      const isExcluded = excludedLines.has(i);
+      
+      if (!isExcluded && inAssignedSection) {
         if (currentSection.trim()) {
           mainContent += currentSection + '\n';
         }
@@ -286,6 +723,335 @@ if __name__ == "__main__":
     mainContent += lines.slice(74).join('\n');
     
     return mainContent;
+  };
+
+  // Render final view
+  if (currentView === 'final') {
+    return (
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3, bgcolor: 'grey.100', minHeight: '100vh' }}>
+        {/* Header */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'grey.300' }}>
+          <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
+            {'{Activity Title}'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Some of the changes you've made require that you update main.py to ensure that 
+            any imports and file paths reflect your new directory structure. This is okay, and a{' '}
+            <strong>totally normal part of refactoring!</strong> Click into the main.py tab to update the script.
+          </Typography>
+        </Paper>
+
+        {/* Tab Navigation */}
+        <Box sx={{ mb: 3 }}>
+          <Button
+            variant={finalView === 'main' ? 'contained' : 'outlined'}
+            onClick={() => setFinalView('main')}
+            sx={{ 
+              mr: 2,
+              bgcolor: finalView === 'main' ? 'grey.800' : 'transparent',
+              color: finalView === 'main' ? 'white' : 'black',
+              '&:hover': {
+                bgcolor: finalView === 'main' ? 'grey.700' : 'grey.200'
+              }
+            }}
+          >
+            MAIN.PY
+          </Button>
+          <Button
+            variant={finalView === 'directory' ? 'contained' : 'outlined'}
+            onClick={() => setFinalView('directory')}
+            sx={{ 
+              bgcolor: finalView === 'directory' ? 'grey.800' : 'transparent',
+              color: finalView === 'directory' ? 'white' : 'black',
+              '&:hover': {
+                bgcolor: finalView === 'directory' ? 'grey.700' : 'grey.200'
+              }
+            }}
+          >
+            PROJECT DIRECTORY
+          </Button>
+        </Box>
+
+        {/* Directory View */}
+        {finalView === 'directory' && (
+          <Paper elevation={2} sx={{ bgcolor: 'grey.800', color: 'white' }}>
+            <Box sx={{ p: 2, bgcolor: 'black', color: 'white' }}>
+              <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                PROJECT DIRECTORY
+              </Typography>
+            </Box>
+            
+            {/* Column Headers */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              px: 2,
+              py: 1,
+              bgcolor: 'grey.600',
+              borderBottom: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <Typography variant="body2" sx={{ 
+                color: 'white', 
+                fontWeight: 'bold',
+                fontSize: '0.85rem'
+              }}>
+                Name
+              </Typography>
+              <Typography variant="body2" sx={{ 
+                color: 'white', 
+                fontWeight: 'bold',
+                fontSize: '0.85rem'
+              }}>
+                File Type
+              </Typography>
+            </Box>
+            
+            {/* File List */}
+            <Box sx={{ bgcolor: 'grey.700', minHeight: 300, p: 2 }}>
+              {/* Show organized files */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ color: 'white', fontWeight: 'bold', mb: 1 }}>
+                  Root Directory:
+                </Typography>
+                {getRootFiles().map(file => (
+                  <Box key={file.id} sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    py: 0.5,
+                    px: 1,
+                    bgcolor: file.id === 'main' ? 'rgba(255, 215, 0, 0.2)' : 'transparent',
+                    border: file.id === 'main' ? '1px solid #FFD700' : 'none',
+                    borderRadius: 1,
+                    mb: 0.5
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {getFileIcon(file.type)}
+                      <Typography variant="body2" sx={{ ml: 1, color: file.id === 'main' ? '#FFD700' : 'white' }}>
+                        {file.name}
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      {getFileTypeLabel(file.type)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+
+              {/* Show folders and their contents */}
+              {folders.map(folder => (
+                <Box key={folder.id} sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <FolderIcon sx={{ color: '#FFD700', mr: 1 }} />
+                    <Typography variant="body2" sx={{ color: 'white', fontWeight: 'bold' }}>
+                      {folder.name}/
+                    </Typography>
+                  </Box>
+                  <Box sx={{ ml: 3 }}>
+                    {getFilesInFolder(folder.id).map(file => (
+                      <Box key={file.id} sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        py: 0.5,
+                        px: 1,
+                        mb: 0.5
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {getFileIcon(file.type)}
+                          <Typography variant="body2" sx={{ ml: 1, color: 'white' }}>
+                            {file.name}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                          {getFileTypeLabel(file.type)}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
+        )}
+
+        {/* Main.py View */}
+        {finalView === 'main' && (
+          <Box>
+            <Paper elevation={2} sx={{ mb: 2, bgcolor: 'grey.800', color: 'white' }}>
+              <Box sx={{ p: 2, bgcolor: 'black', color: 'white' }}>
+                <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+                  Main.py Tab
+                </Typography>
+              </Box>
+              
+              {/* Enhanced Code Editor */}
+              <Box sx={{ p: 2, bgcolor: 'grey.900' }}>
+                <EnhancedCodeEditor
+                  content={mainPyContent}
+                  onChange={setMainPyContent}
+                  disabled={!isMainPyEditable}
+                />
+              </Box>
+              
+              {/* Control Buttons */}
+              <Box sx={{ p: 2, bgcolor: 'grey.800', display: 'flex', justifyContent: 'space-between' }}>
+                <Button
+                  variant="contained"
+                  sx={{ 
+                    bgcolor: 'grey.700',
+                    color: 'white',
+                    '&:hover': { bgcolor: 'grey.600' }
+                  }}
+                >
+                  EXPAND SCRIPT
+                </Button>
+                
+                <Button
+                  variant="contained"
+                  sx={{ 
+                    bgcolor: 'black',
+                    color: 'white',
+                    '&:hover': { bgcolor: 'grey.800' }
+                  }}
+                >
+                  EXECUTE SCRIPT
+                </Button>
+              </Box>
+            </Paper>
+            
+            {/* Help Text */}
+            <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
+              <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
+                Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
+                Lines 6-8 and 38 are highlighted as editable - click on them to modify the code.
+              </Typography>
+            </Paper>
+          </Box>
+        )}
+
+        {/* Bottom Navigation */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setCurrentView('organize')}
+            sx={{ 
+              color: 'grey.600',
+              borderColor: 'grey.600',
+              '&:hover': { 
+                borderColor: 'grey.800',
+                bgcolor: 'grey.100'
+              }
+            }}
+          >
+            BACK TO ORGANIZE
+          </Button>
+          
+          <Button
+            variant="contained"
+            sx={{ 
+              bgcolor: 'black',
+              color: 'white',
+              '&:hover': { bgcolor: 'grey.800' }
+            }}
+          >
+            NEXT
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
+  const updateFileLocations = (files, folders) => {
+    const locations = {};
+    
+    files.forEach(file => {
+      const path = buildFilePath(file, folders);
+      locations[file.id] = {
+        fileId: file.id,
+        fileName: file.name,
+        fileType: file.type,
+        currentPath: path,
+        folderId: file.folder,
+        folderName: file.folder ? folders.find(f => f.id === file.folder)?.name : null,
+        isInRoot: !file.folder,
+        fullLocation: path === '/' ? `./${file.name}` : `.${path}/${file.name}`,
+        lastMoved: new Date().toISOString()
+      };
+    });
+    
+    return locations;
+  };
+
+  const getFileLocation = (fileId) => {
+    return fileLocations[fileId] || null;
+  };
+
+  const getFilesInLocation = (path) => {
+    return Object.values(fileLocations).filter(location => 
+      location.currentPath === path
+    );
+  };
+
+  const getAllFileLocations = () => {
+    return fileLocations;
+  };
+
+  const exportFileStructure = () => {
+    const structure = {
+      folders: folders.map(folder => ({
+        id: folder.id,
+        name: folder.name,
+        path: `/${folder.name}`,
+        parent: folder.parent
+      })),
+      files: Object.values(fileLocations),
+      generatedAt: new Date().toISOString()
+    };
+    
+    return JSON.stringify(structure, null, 2);
+  };
+
+  const validateOrganization = () => {
+    const validation = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      stats: {
+        totalFiles: organizationFiles.length,
+        filesInRoot: 0,
+        filesInFolders: 0,
+        totalFolders: folders.length
+      }
+    };
+    
+    Object.values(fileLocations).forEach(location => {
+      if (location.isInRoot) {
+        validation.stats.filesInRoot++;
+        if (location.fileId !== 'main') {
+          validation.errors.push(`File ${location.fileName} should be in a folder, not root`);
+          validation.isValid = false;
+        }
+      } else {
+        validation.stats.filesInFolders++;
+      }
+    });
+    
+    // Check if main.py is in root
+    const mainLocation = fileLocations['main'];
+    if (mainLocation && !mainLocation.isInRoot) {
+      validation.errors.push('main.py must be in root directory');
+      validation.isValid = false;
+    }
+    
+    return validation;
+  };
+
+  const debugFileLocations = () => {
+    console.log('Current file locations:', fileLocations);
+    console.log('Validation result:', validateOrganization());
+    console.log('File structure JSON:', exportFileStructure());
   };
 
   // Code display control functions
@@ -510,129 +1276,6 @@ if __name__ == "__main__":
     }
   };
 
-  // Initialize organization files when transitioning from refactoring to organize
-  useEffect(() => {
-    if (currentView === 'organize') {
-      // Convert refactored files to project organization format
-      const initialFiles = files.map(file => ({
-        id: file.id,
-        name: file.name,
-        type: 'PY File',
-        description: `Python script with ${file.functions.length} functions${file.codeBlocks?.length ? ` and ${file.codeBlocks.length} code blocks` : ''}`,
-        folder: null,
-        functions: file.functions || [],
-        codeBlocks: file.codeBlocks || [],
-        content: file.content || ''
-      }));
-      
-      // Add main.py file with dynamic content
-      const unassignedFunctions = getUnassignedFunctions();
-      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
-        !files.some(f => f.codeBlocks?.some(block => block.name === group))
-      );
-      
-      const mainFile = {
-        id: 'main',
-        name: 'main.py',
-        type: 'PY File',
-        description: `Main execution script with ${unassignedFunctions.length} unassigned functions${unassignedCodeBlocks.length > 0 ? `, ${unassignedCodeBlocks.length} unassigned code blocks,` : ''} and main execution logic. Automatically imports from refactored files.`,
-        folder: null,
-        functions: unassignedFunctions,
-        codeBlocks: unassignedCodeBlocks.map(name => ({ name, content: '' })),
-        content: generateMainPyContent()
-      };
-      
-      // Add standard project files
-      const standardFiles = [
-        {
-          id: 'init',
-          name: '__init__.py',
-          type: 'PY File',
-          description: 'Python package initialization file',
-          folder: null,
-          functions: [],
-          codeBlocks: []
-        },
-        {
-          id: 'png',
-          name: '201.png',
-          type: 'IMG File',
-          description: 'Image file',
-          folder: null
-        },
-        {
-          id: 'nd2',
-          name: '201.nd2',
-          type: 'DATA File',
-          description: 'Microscopy data file',
-          folder: null
-        }
-      ];
-      
-      const allFiles = [mainFile, ...standardFiles, ...initialFiles];
-      setOrganizationFiles(allFiles);
-      setSelectedOrgFile(allFiles[0]); // Select main.py by default
-    }
-  }, [currentView, files]);
-
-  // Update main.py content when files change in organize view
-  useEffect(() => {
-    if (currentView === 'organize' && organizationFiles.length > 0) {
-      const unassignedFunctions = getUnassignedFunctions();
-      const unassignedCodeBlocks = ['Group 1', 'Group 2', 'Group 3', 'Group 4'].filter(group => 
-        !files.some(f => f.codeBlocks?.some(block => block.name === group))
-      );
-      
-      const updatedMainFile = {
-        id: 'main',
-        name: 'main.py',
-        type: 'PY File',
-        description: `Main execution script with ${unassignedFunctions.length} unassigned functions${unassignedCodeBlocks.length > 0 ? `, ${unassignedCodeBlocks.length} unassigned code blocks,` : ''} and main execution logic. Automatically imports from refactored files.`,
-        folder: organizationFiles.find(f => f.id === 'main')?.folder || null,
-        functions: unassignedFunctions,
-        codeBlocks: unassignedCodeBlocks.map(name => ({ name, content: '' })),
-        content: generateMainPyContent()
-      };
-      
-      setOrganizationFiles(prevFiles => 
-        prevFiles.map(file => 
-          file.id === 'main' ? updatedMainFile : file
-        )
-      );
-    }
-  }, [files, currentView]);
-  
-  // Organization view functions
-  const getFileIcon = (fileType) => {
-    switch (fileType) {
-      case 'PY File':
-        return <PythonFileIcon />;
-      case 'IMG File':
-        return <ImageIcon sx={{ color: '#4CAF50' }} />;
-      case 'DATA File':
-        return <ImageIcon sx={{ color: '#FF9800' }} />;
-      case 'TXT File':
-        return <InsertDriveFileIcon sx={{ color: '#2196F3' }} />;
-      default:
-        return <InsertDriveFileIcon />;
-    }
-  };
-
-  const getFileTypeLabel = (fileType) => {
-    switch (fileType) {
-      case 'PY File':
-        return 'Python file';
-      case 'IMG File':
-        return 'Image file';
-      case 'DATA File':
-        return 'Data file';
-      case 'TXT File':
-        return 'Text file';
-      default:
-        return 'File';
-    }
-  };
-
   const handleFolderToggle = (folderId) => {
     const newExpanded = new Set(expandedFolders);
     if (newExpanded.has(folderId)) {
@@ -669,14 +1312,33 @@ if __name__ == "__main__":
         type: 'Folder',
         parent: null
       };
-      setFolders([...folders, newFolder]);
+      
+      const updatedFolders = [...folders, newFolder];
+      setFolders(updatedFolders);
       setExpandedFolders(new Set([...expandedFolders, newFolder.id]));
+      
+      // Update file locations with new folder structure
+      const newLocations = updateFileLocations(organizationFiles, updatedFolders);
+      setFileLocations(newLocations);
+      
       setNewFolderName('');
       setNewFolderDialog(false);
+      
+      console.log('New folder created:', {
+        folderName: newFolder.name,
+        folderId: newFolder.id,
+        path: `/${newFolder.name}`,
+        timestamp: new Date().toISOString()
+      });
     }
   };
 
   const handleFileDragStart = (e, file) => {
+    // Prevent main.py from being dragged
+    if (file.id === 'main') {
+      e.preventDefault();
+      return;
+    }
     setDraggedFile(file);
     e.dataTransfer.effectAllowed = 'move';
   };
@@ -699,35 +1361,123 @@ if __name__ == "__main__":
   const handleFileDrop = (e, targetFolder) => {
     e.preventDefault();
     if (draggedFile && targetFolder) {
-      setOrganizationFiles(organizationFiles.map(f => 
+      const updatedFiles = organizationFiles.map(f => 
         f.id === draggedFile.id 
           ? { ...f, folder: targetFolder.id }
           : f
-      ));
+      );
+      
+      setOrganizationFiles(updatedFiles);
+      
+      // Update file locations
+      const newLocations = updateFileLocations(updatedFiles, folders);
+      setFileLocations(newLocations);
+      
+      // Log the updated location for the moved file
+      console.log('File moved:', {
+        file: draggedFile.name,
+        from: fileLocations[draggedFile.id]?.currentPath || '/',
+        to: buildFilePath({ folder: targetFolder.id }, folders),
+        timestamp: new Date().toISOString()
+      });
+      
       setDraggedFile(null);
       setDragOverFolder(null);
     }
   };
 
   const moveFileToRoot = (fileId) => {
-    setOrganizationFiles(organizationFiles.map(f => 
+    const updatedFiles = organizationFiles.map(f => 
       f.id === fileId 
         ? { ...f, folder: null }
         : f
-    ));
+    );
+    
+    setOrganizationFiles(updatedFiles);
+    
+    // Update file locations
+    const newLocations = updateFileLocations(updatedFiles, folders);
+    setFileLocations(newLocations);
+    
+    // Log the move to root
+    const file = organizationFiles.find(f => f.id === fileId);
+    console.log('File moved to root:', {
+      file: file.name,
+      from: fileLocations[fileId]?.currentPath || '/',
+      to: '/',
+      timestamp: new Date().toISOString()
+    });
+    
     handleCloseContextMenu();
   };
 
-  const getFilesInFolder = (folderId) => {
-    return organizationFiles.filter(f => f.folder === folderId);
+  // Check if created files are organized (first condition)
+  const canShowMustOrganize = () => {
+    // Check if there are folders created
+    const hasFolders = folders.length > 0;
+    
+    // Get all created files (excluding main.py and standard project files)
+    const createdFiles = organizationFiles.filter(f => 
+      f.id !== 'main' && f.id !== 'init' && f.id !== 'png' && f.id !== 'nd2' && 
+      f.id !== 'nd2_tail' && f.id !== 'qpdata' && f.id !== 'tif_vang' && f.id !== 'citations'
+    );
+    
+    // Check if ALL created files are organized into folders
+    const allCreatedFilesOrganized = createdFiles.length > 0 && 
+      createdFiles.every(f => f.folder !== null);
+    
+    // Check if main.py is in root directory (folder should be null)
+    const mainFile = organizationFiles.find(f => f.id === 'main');
+    const mainInRoot = mainFile && mainFile.folder === null;
+    
+    return hasFolders && allCreatedFilesOrganized && mainInRoot;
   };
 
-  const getRootFiles = () => {
-    return organizationFiles.filter(f => f.folder === null);
-  };
-
+  // Check if ALL files are organized (final condition)
   const canProceed = () => {
-    return folders.length > 0 && organizationFiles.some(f => f.folder !== null);
+    // Check if there are folders created
+    const hasFolders = folders.length > 0;
+    
+    // Get all files except main.py
+    const allOtherFiles = organizationFiles.filter(f => f.id !== 'main');
+    
+    // Check if ALL other files are organized into folders
+    const allOtherFilesOrganized = allOtherFiles.length > 0 && 
+      allOtherFiles.every(f => f.folder !== null);
+    
+    // Check if main.py is in root directory (folder should be null)
+    const mainFile = organizationFiles.find(f => f.id === 'main');
+    const mainInRoot = mainFile && mainFile.folder === null;
+    
+    return hasFolders && allOtherFilesOrganized && mainInRoot;
+  };
+
+  // Handle the organization button click
+  const handleOrganizeProject = () => {
+    if (canProceed()) {
+      // All conditions satisfied, proceed to final view
+      console.log('Project organized successfully!');
+      console.log('Files:', organizationFiles);
+      console.log('Folders:', folders);
+      console.log('Final file locations:', fileLocations);
+      
+      // Initialize main.py content for final view
+      const mainFile = organizationFiles.find(f => f.id === 'main');
+      setMainPyContent(mainFile?.content || generateMainPyContentWithEditableLines());
+      setCurrentView('final');
+      return;
+    }
+    
+    // Show error popup with specific message
+    const unorganizedFiles = organizationFiles.filter(f => 
+      f.id !== 'main' && f.folder === null
+    );
+    
+    const fileNames = unorganizedFiles.map(f => f.name).join(', ');
+    setErrorDialog({
+      open: true,
+      message: `You must organize all files into folders before proceeding. The following files are still in the root directory: ${fileNames}. Only main.py should remain in the root directory.`
+    });
   };
 
   // Tree view rendering functions
@@ -747,7 +1497,7 @@ if __name__ == "__main__":
           pl: `${paddingLeft}px`,
           pr: 1,
           py: 0.5,
-          cursor: 'pointer',
+          cursor: file.id === 'main' ? 'default' : 'pointer', // Different cursor for main.py
           bgcolor: isSelected ? 'primary.main' : 'transparent',
           color: isSelected ? 'white' : 'white',
           '&:hover': {
@@ -779,7 +1529,7 @@ if __name__ == "__main__":
         }}
         onClick={() => handleOrgFileClick(file)}
         onContextMenu={(e) => handleContextMenu(e, file)}
-        draggable
+        draggable={file.id !== 'main'} // Prevent main.py from being draggable
         onDragStart={(e) => handleFileDragStart(e, file)}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, position: 'relative', zIndex: 2 }}>
@@ -809,7 +1559,7 @@ if __name__ == "__main__":
                 fontWeight: 'bold'
               }}
             >
-              MAIN
+              MAIN (FIXED)
             </Typography>
           )}
         </Box>
@@ -969,6 +1719,14 @@ if __name__ == "__main__":
             prudent to organize it a little. Use the interface below to investigate each file and 
             come up with ideas for how to organize the project. You can click on a file to learn 
             more about it. The <strong>main.py</strong> file contains the remaining unassigned code and main execution logic.
+            <br /><br />
+            <strong>Step 1:</strong> Create folders and organize your created files (file 1.py, file 2.py, etc.) into them.
+            <br />
+            <strong>Step 2:</strong> Click &quot;MUST ORGANIZE PROJECT&quot; to check your progress.
+            <br />
+            <strong>Step 3:</strong> Organize ALL remaining files except main.py to proceed.
+            <br />
+            <strong>Note:</strong> main.py must always remain in the root directory.
           </Typography>
         </Paper>
 
@@ -1029,6 +1787,21 @@ if __name__ == "__main__":
             >
               NEW FOLDER
             </Button>
+
+            {/* Debug Button */}
+            <Button
+              variant="outlined"
+              onClick={debugFileLocations}
+              sx={{ 
+                mb: 2,
+                ml: 2,
+                bgcolor: 'info.main',
+                color: 'white',
+                '&:hover': { bgcolor: 'info.dark' }
+              }}
+            >
+              DEBUG FILE LOCATIONS
+            </Button>
           </Box>
 
           {/* Right Side - File Details */}
@@ -1068,6 +1841,22 @@ if __name__ == "__main__":
                     <Typography variant="body2" color="text.secondary">
                       {selectedOrgFile.description}
                     </Typography>
+                    
+                    {/* Show file location */}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Location:
+                      </Typography>
+                      <Typography variant="body2" sx={{ 
+                        fontFamily: 'monospace',
+                        bgcolor: 'grey.100',
+                        p: 1,
+                        borderRadius: 1,
+                        fontSize: '0.8rem'
+                      }}>
+                        {getFileLocation(selectedOrgFile.id)?.fullLocation || 'Unknown'}
+                      </Typography>
+                    </Box>
                     
                     {selectedOrgFile.functions && selectedOrgFile.functions.length > 0 && (
                       <Box sx={{ mt: 2 }}>
@@ -1173,26 +1962,78 @@ if __name__ == "__main__":
             BACK TO REFACTORING
           </Button>
           
-          <Button
-            variant="contained"
-            startIcon={<CheckCircleIcon />}
-            disabled={!canProceed()}
-            sx={{ 
-              bgcolor: canProceed() ? 'grey.600' : 'grey.400',
-              color: 'white',
-              '&:hover': { 
-                bgcolor: canProceed() ? 'grey.700' : 'grey.400' 
+          {/* Show different buttons based on conditions */}
+          {canProceed() ? (
+            <Button
+              variant="contained"
+              startIcon={<CheckCircleIcon />}
+              sx={{ 
+                bgcolor: 'success.main',
+                color: 'white',
+                '&:hover': { 
+                  bgcolor: 'success.dark'
+                },
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                px: 3,
+                py: 1.5
+              }}
+              onClick={handleOrganizeProject}
+            >
+              CONTINUE
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              startIcon={<CheckCircleIcon />}
+              disabled={!canShowMustOrganize()}
+              sx={{ 
+                bgcolor: canShowMustOrganize() ? 'warning.main' : 'grey.400',
+                color: 'white',
+                '&:hover': { 
+                  bgcolor: canShowMustOrganize() ? 'warning.dark' : 'grey.400' 
+                },
+                fontSize: '0.9rem',
+                fontWeight: 'bold',
+                px: 3,
+                py: 1.5
+              }}
+              onClick={handleOrganizeProject}
+              title={canShowMustOrganize() ? 
+                'Click to check if all files are organized' : 
+                'Create folders and organize all created files first'
               }
-            }}
-            onClick={() => {
-              console.log('Project organized successfully!');
-              console.log('Files:', organizationFiles);
-              console.log('Folders:', folders);
-            }}
-          >
-            MUST ORGANIZE PROJECT TO PROCEED
-          </Button>
+            >
+              {canShowMustOrganize() ? 'MUST ORGANIZE PROJECT' : 'ORGANIZE CREATED FILES FIRST'}
+            </Button>
+          )}
         </Box>
+
+        {/* Error Dialog */}
+        <Dialog 
+          open={errorDialog.open} 
+          onClose={() => setErrorDialog({ open: false, message: '' })}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold' }}>
+            Organization Required
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body1" sx={{ mt: 1 }}>
+              {errorDialog.message}
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => setErrorDialog({ open: false, message: '' })}
+              variant="contained"
+              color="primary"
+            >
+              OK, I&apos;ll organize them
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Context Menu */}
         <Menu
