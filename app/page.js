@@ -642,6 +642,10 @@ const CodeRefactoringInterface = () => {
   const [newImportModule, setNewImportModule] = useState('');
   const [newImportItems, setNewImportItems] = useState('');
 
+  // Validation state
+  const [validationResults, setValidationResults] = useState(null);
+  const [showValidation, setShowValidation] = useState(false);
+
   // All useEffect hooks must be at the top, before any conditional logic
   
   // Initialize editable lines
@@ -812,6 +816,11 @@ const CodeRefactoringInterface = () => {
     if (currentView === 'final') {
       const newMainContent = generateMainPyContentWithEditableLines();
       setMainPyContent(newMainContent);
+      
+      // Auto-run validation after a short delay to give user feedback
+      setTimeout(() => {
+        validateImportsAndStructure();
+      }, 1000);
     }
   }, [currentView, customImports, files]);
 
@@ -1243,6 +1252,84 @@ if __name__ == "__main__":
     );
   };
 
+  // Simplified validation function
+  const validateImportsAndStructure = () => {
+    const results = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      successes: []
+    };
+
+    try {
+      // Get current file structure
+      const fileStructureJson = exportFileStructure();
+      const fileStructure = JSON.parse(fileStructureJson);
+
+      // Find folders that contain files (our created/moved files)
+      const foldersWithFiles = [];
+      fileStructure.files.forEach(file => {
+        if (!file.isInRoot && file.fileId !== 'main' && file.folderName) {
+          if (!foldersWithFiles.includes(file.folderName)) {
+            foldersWithFiles.push(file.folderName);
+          }
+        }
+      });
+
+      // Get our custom import statements (ignore built-in imports)
+      const customImportModules = customImports
+        .filter(imp => imp.enabled && imp.module && imp.items)
+        .filter(imp => !['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(imp.module))
+        .map(imp => imp.module);
+
+      // Simple validation: do our import modules match our folder names?
+      if (foldersWithFiles.length === 0) {
+        results.warnings.push('No files have been organized into folders yet.');
+      } else if (customImportModules.length === 0) {
+        results.errors.push(`You have files organized in ${foldersWithFiles.length} folder(s) (${foldersWithFiles.join(', ')}) but no custom import statements to import from them.`);
+        results.isValid = false;
+      } else {
+        // Check each folder has a matching import
+        foldersWithFiles.forEach(folderName => {
+          if (customImportModules.includes(folderName)) {
+            results.successes.push(`✓ Folder "${folderName}" has matching import statement`);
+          } else {
+            results.errors.push(`✗ Folder "${folderName}" contains files but has no import statement`);
+            results.isValid = false;
+          }
+        });
+
+        // Check each import has a matching folder
+        customImportModules.forEach(moduleName => {
+          if (!foldersWithFiles.includes(moduleName)) {
+            results.warnings.push(`⚠ Import "from ${moduleName} import ..." doesn't match any folder name`);
+          }
+        });
+
+        // Summary
+        if (results.isValid) {
+          results.successes.push(`✓ All ${foldersWithFiles.length} folder(s) have corresponding import statements`);
+        }
+      }
+
+    } catch (error) {
+      results.errors.push(`Validation error: ${error.message}`);
+      results.isValid = false;
+    }
+
+    setValidationResults(results);
+    setShowValidation(true);
+    
+    // Auto-hide after 8 seconds if successful
+    if (results.isValid && results.errors.length === 0) {
+      setTimeout(() => {
+        setShowValidation(false);
+      }, 8000);
+    }
+    
+    return results;
+  };
+
   // Enhanced helper function to generate main.py content with editable lines
   const generateMainPyContentWithEditableLines = () => {
     const assignedCodeBlocks = files.flatMap(f => f.codeBlocks?.map(block => block.name) || []);
@@ -1663,23 +1750,143 @@ if __name__ == "__main__":
                     }}
                   />
                   
-                  <Button
-                    onClick={addNewImport}
-                    variant="contained"
-                    size="small"
-                    disabled={!newImportModule.trim() || !newImportItems.trim()}
-                    sx={{
-                      bgcolor: '#4CAF50',
-                      '&:hover': { bgcolor: '#45a049' },
-                      '&:disabled': { bgcolor: 'rgba(76, 175, 80, 0.3)' }
-                    }}
-                  >
-                    Add Import
-                  </Button>
-                </Box>
-              </Box>
-              
-              {/* Editable Lines Info Banner */}
+                                     <Button
+                     onClick={addNewImport}
+                     variant="contained"
+                     size="small"
+                     disabled={!newImportModule.trim() || !newImportItems.trim()}
+                     sx={{
+                       bgcolor: '#4CAF50',
+                       '&:hover': { bgcolor: '#45a049' },
+                       '&:disabled': { bgcolor: 'rgba(76, 175, 80, 0.3)' }
+                     }}
+                   >
+                     Add Import
+                   </Button>
+                 </Box>
+                 
+                 {/* Validation Section */}
+                 <Box sx={{ 
+                   display: 'flex', 
+                   justifyContent: 'space-between',
+                   alignItems: 'center',
+                   mt: 2,
+                   pt: 2,
+                   borderTop: '1px solid rgba(255, 255, 255, 0.2)'
+                 }}>
+                   <Typography variant="body2" sx={{ color: '#2196F3', fontWeight: 'bold' }}>
+                     🔍 Validate Import Structure
+                   </Typography>
+                   
+                   <Button
+                     onClick={validateImportsAndStructure}
+                     variant="contained"
+                     size="medium"
+                     sx={{
+                       bgcolor: '#FF9800',
+                       color: 'white',
+                       fontWeight: 'bold',
+                       '&:hover': { bgcolor: '#F57C00' }
+                     }}
+                   >
+                     Validate Imports & Structure
+                   </Button>
+                 </Box>
+                              </Box>
+               
+               {/* Validation Results */}
+               {showValidation && validationResults && (
+                 <Box sx={{ 
+                   p: 2, 
+                   bgcolor: validationResults.isValid 
+                     ? 'rgba(76, 175, 80, 0.1)' 
+                     : 'rgba(244, 67, 54, 0.1)',
+                   borderLeft: `4px solid ${validationResults.isValid ? '#4CAF50' : '#f44336'}`,
+                   mb: 2,
+                   position: 'relative'
+                 }}>
+                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                     <Typography variant="h6" sx={{ 
+                       color: validationResults.isValid ? '#4CAF50' : '#f44336', 
+                       fontWeight: 'bold',
+                       display: 'flex',
+                       alignItems: 'center',
+                       gap: 1
+                     }}>
+                       {validationResults.isValid ? '✅ Validation Passed!' : '❌ Validation Failed'}
+                     </Typography>
+                     
+                     <IconButton
+                       onClick={() => setShowValidation(false)}
+                       size="small"
+                       sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                     >
+                       <DeleteIcon fontSize="small" />
+                     </IconButton>
+                   </Box>
+                   
+                   {/* Success Messages */}
+                   {validationResults.successes.length > 0 && (
+                     <Box sx={{ mb: 2 }}>
+                                               <Typography variant="subtitle2" sx={{ color: '#4CAF50', fontWeight: 'bold', mb: 1 }}>
+                          ✅ What&apos;s Working:
+                        </Typography>
+                       {validationResults.successes.map((success, index) => (
+                         <Typography key={index} variant="body2" sx={{ 
+                           color: '#4CAF50', 
+                           ml: 2, 
+                           mb: 0.5,
+                           fontSize: '0.85rem'
+                         }}>
+                           {success}
+                         </Typography>
+                       ))}
+                     </Box>
+                   )}
+                   
+                   {/* Error Messages */}
+                   {validationResults.errors.length > 0 && (
+                     <Box sx={{ mb: 2 }}>
+                       <Typography variant="subtitle2" sx={{ color: '#f44336', fontWeight: 'bold', mb: 1 }}>
+                         ❌ Issues Found:
+                       </Typography>
+                       {validationResults.errors.map((error, index) => (
+                         <Typography key={index} variant="body2" sx={{ 
+                           color: '#f44336', 
+                           ml: 2, 
+                           mb: 0.5,
+                           fontSize: '0.85rem'
+                         }}>
+                           • {error}
+                         </Typography>
+                       ))}
+                     </Box>
+                   )}
+                   
+                   {/* Warning Messages */}
+                   {validationResults.warnings.length > 0 && (
+                     <Box sx={{ mb: 2 }}>
+                       <Typography variant="subtitle2" sx={{ color: '#FF9800', fontWeight: 'bold', mb: 1 }}>
+                         ⚠️ Warnings:
+                       </Typography>
+                       {validationResults.warnings.map((warning, index) => (
+                         <Typography key={index} variant="body2" sx={{ 
+                           color: '#FF9800', 
+                           ml: 2, 
+                           mb: 0.5,
+                           fontSize: '0.85rem'
+                         }}>
+                           • {warning}
+                         </Typography>
+                       ))}
+                     </Box>
+                   )}
+                   
+                   
+                 </Box>
+               )}
+               
+               {/* Editable Lines Info Banner */}
               <Box sx={{ 
                 p: 2, 
                 bgcolor: 'rgba(255, 215, 0, 0.1)', 
@@ -1751,6 +1958,7 @@ if __name__ == "__main__":
                 The Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
                 The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
                 Students can enable/disable imports and see real-time updates in the code editor.
+                The validation system checks that import statements correctly match the organized file structure.
               </Typography>
             </Paper>
           </Box>
