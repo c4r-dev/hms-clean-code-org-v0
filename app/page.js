@@ -584,12 +584,16 @@ const CodeRefactoringInterface = () => {
   const router = useRouter();
   const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', or 'final'
   const [files, setFiles] = useState([
-    { id: 1, name: 'file 1.py', color: 'primary', functions: [], codeBlocks: [], content: '' }
+    { id: 1, name: 'file 1.py', color: 'primary', functions: [], codeBlocks: [], content: '', functionsCode: {} }
   ]);
   
   const [selectedFile, setSelectedFile] = useState(1);
+  const [selectedFunction, setSelectedFunction] = useState(null);
+  const [functionBlocks, setFunctionBlocks] = useState([]);
   const [draggedFunction, setDraggedFunction] = useState(null);
   const [draggedCodeBlock, setDraggedCodeBlock] = useState(null);
+  const [draggedFunctionBlock, setDraggedFunctionBlock] = useState(null);
+  const [movedFunctions, setMovedFunctions] = useState(new Set()); // Track functions that have been moved
   const [editingFile, setEditingFile] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [renameDialog, setRenameDialog] = useState({ open: false, fileId: null, currentName: '' });
@@ -642,6 +646,37 @@ const CodeRefactoringInterface = () => {
       9: ' ',
       38: lines[38] || '    blur_factor = 1'
     });
+  }, []);
+
+  // Initialize first file content
+  useEffect(() => {
+    if (files.length > 0) {
+      const firstFile = files[0];
+      let content = `# ${firstFile.name}\n\n`;
+      
+      // Add functions content
+      firstFile.functions.forEach(functionName => {
+        if (firstFile.functionsCode && firstFile.functionsCode[functionName]) {
+          // Use actual function code if available
+          content += `${firstFile.functionsCode[functionName]}\n\n`;
+        } else {
+          // Fallback to placeholder code
+          content += `# Function: ${functionName}\n`;
+          content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+        }
+      });
+      
+      // Add code blocks content
+      if (firstFile.codeBlocks && firstFile.codeBlocks.length > 0) {
+        firstFile.codeBlocks.forEach(block => {
+          content += `# ${block.name}\n`;
+          content += `${block.content}\n\n`;
+        });
+      }
+      
+      // Update the file with the new content
+      setFiles(prevFiles => prevFiles.map(f => f.id === firstFile.id ? { ...f, content } : f));
+    }
   }, []);
 
   // Initialize organization files when transitioning from refactoring to organize
@@ -780,6 +815,72 @@ const CodeRefactoringInterface = () => {
       setFileLocations(newLocations);
     }
   }, [organizationFiles, folders, currentView]);
+
+  // Function to parse code into function blocks
+  const parseFunctionBlocks = (code) => {
+    const lines = code.split('\n');
+    const blocks = [];
+    let currentBlock = null;
+    let currentLines = [];
+    
+    console.log('parseFunctionBlocks called with', lines.length, 'lines');
+    
+    // Colors for different functions
+    const colors = [
+      '#8b5cf6', // Purple
+      '#48bb78', // Green
+      '#ff9f40', // Orange
+      '#3182ce', // Blue
+      '#ed8936', // Orange-red
+      '#38b2ac', // Teal
+      '#9f7aea', // Purple-light
+      '#68d391', // Green-light
+    ];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      // Check if this is a function definition
+      if (line.trim().startsWith('def ') && line.trim().endsWith(':')) {
+        console.log('Found function definition at line', i, ':', line.trim());
+        // Save previous block if exists
+        if (currentBlock) {
+          blocks.push({
+            ...currentBlock,
+            lines: currentLines,
+            endLine: i - 1
+          });
+        }
+        
+        // Start new block
+        const functionName = line.trim().match(/def\s+(\w+)/)?.[1] || 'unknown';
+        currentBlock = {
+          name: functionName,
+          startLine: i,
+          color: colors[blocks.length % colors.length],
+          type: 'function'
+        };
+        currentLines = [line];
+      } else if (currentBlock) {
+        // Add line to current block
+        currentLines.push(line);
+        
+        // Check if we've reached the end of the function (next function or end of code)
+        if (i === lines.length - 1 || (lines[i + 1] && lines[i + 1].trim().startsWith('def ') && lines[i + 1].trim().endsWith(':'))) {
+          blocks.push({
+            ...currentBlock,
+            lines: currentLines,
+            endLine: i
+          });
+          currentBlock = null;
+          currentLines = [];
+        }
+      }
+    }
+    
+    console.log('parseFunctionBlocks returning', blocks.length, 'blocks:', blocks);
+    return blocks;
+  };
 
   const exampleCode = `import os.path
 import numpy as np
@@ -1004,6 +1105,12 @@ if __name__ == "__main__":
                         images=processed_images,
                         output_path=f"overview.png")
 `;
+
+  // Update function blocks state when component mounts
+  useEffect(() => {
+    const blocks = parseFunctionBlocks(exampleCode);
+    setFunctionBlocks(blocks);
+  }, []);
 
   const functions = [
     'load_tif',
@@ -1577,13 +1684,27 @@ if __name__ == "__main__":
       color: colors[files.length % colors.length],
       functions: [],
       codeBlocks: [],
-      content: ''
+      content: '',
+      functionsCode: {}
     };
     setFiles([...files, newFile]);
     setSelectedFile(newFile.id);
+    // Initialize the file content
+    updateFileContent(newFile.id);
   };
 
   const deleteFile = (fileId) => {
+    const fileToDelete = files.find(f => f.id === fileId);
+    
+    // If the file being deleted contains moved functions, return them to the left side
+    if (fileToDelete && fileToDelete.functions && fileToDelete.functions.length > 0) {
+      setMovedFunctions(prev => {
+        const newMovedFunctions = new Set(prev);
+        fileToDelete.functions.forEach(func => newMovedFunctions.delete(func));
+        return newMovedFunctions;
+      });
+    }
+    
     setFiles(files.filter(f => f.id !== fileId));
     if (selectedFile === fileId) {
       const remainingFiles = files.filter(f => f.id !== fileId);
@@ -1601,7 +1722,7 @@ if __name__ == "__main__":
     setFiles(files.map(f => f.id === fileId ? { ...f, name: finalName } : f));
     setRenameDialog({ open: false, fileId: null, currentName: '' });
     // Update content with new file name
-    setTimeout(() => updateFileContent(fileId), 0);
+    updateFileContent(fileId);
   };
 
   const changeFileColor = (fileId) => {
@@ -1620,15 +1741,28 @@ if __name__ == "__main__":
     
     // Add functions content
     file.functions.forEach(functionName => {
-      content += `# Function: ${functionName}\n`;
-      content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+      if (file.functionsCode && file.functionsCode[functionName]) {
+        // Use actual function code if available
+        content += `${file.functionsCode[functionName]}\n\n`;
+      } else {
+        // Fallback to placeholder code
+        content += `# Function: ${functionName}\n`;
+        content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+      }
     });
     
     // Add code blocks content
-    file.codeBlocks.forEach(block => {
-      content += `# ${block.name}\n`;
-      content += `${block.content}\n\n`;
-    });
+    if (file.codeBlocks && file.codeBlocks.length > 0) {
+      file.codeBlocks.forEach(block => {
+        content += `# ${block.name}\n`;
+        content += `${block.content}\n\n`;
+      });
+    }
+
+    console.log('updateFileContent called for file:', fileId);
+    console.log('Generated content:', content);
+    console.log('File functions:', file.functions);
+    console.log('File functionsCode:', file.functionsCode);
 
     setFiles(files.map(f => f.id === fileId ? { ...f, content } : f));
   };
@@ -1660,42 +1794,121 @@ if __name__ == "__main__":
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, fileId) => {
-    e.preventDefault();
-    if (draggedFunction) {
-      const updatedFiles = files.map(f => ({
-        ...f,
-        functions: f.functions.filter(func => func !== draggedFunction)
-      }));
+ const handleDrop = (e, fileId) => {
+  e.preventDefault();
+  
+  if (draggedFunctionBlock) {
+    const targetFile = files.find(f => f.id === fileId);
+    if (targetFile && !targetFile.functions.includes(draggedFunctionBlock.name)) {
       
-      const targetFile = updatedFiles.find(f => f.id === fileId);
-      if (targetFile && !targetFile.functions.includes(draggedFunction)) {
-        targetFile.functions.push(draggedFunction);
-      }
+      // Create new functionsCode object
+      const newFunctionsCode = {
+        ...(targetFile.functionsCode || {}),
+        [draggedFunctionBlock.name]: draggedFunctionBlock.lines.join('\n')
+      };
       
-      setFiles(updatedFiles);
-      setDraggedFunction(null);
-      // Update content after adding function
-      setTimeout(() => updateFileContent(fileId), 0);
-    } else if (draggedCodeBlock) {
-      const targetFile = files.find(f => f.id === fileId);
-      if (targetFile) {
-        if (!targetFile.codeBlocks) targetFile.codeBlocks = [];
-        if (!targetFile.codeBlocks.find(block => block.name === draggedCodeBlock)) {
-          const codeContent = getCodeBlockContent(draggedCodeBlock);
-          targetFile.codeBlocks.push({
-            name: draggedCodeBlock,
-            content: codeContent
-          });
+      // Create new functions array
+      const newFunctions = [...targetFile.functions, draggedFunctionBlock.name];
+      
+      // Generate content
+      let content = `# ${targetFile.name}\n\n`;
+      
+      // Add functions content
+      newFunctions.forEach(functionName => {
+        if (newFunctionsCode[functionName]) {
+          // Use actual function code if available
+          content += `${newFunctionsCode[functionName]}\n\n`;
+        } else {
+          // Fallback to placeholder code
+          content += `# Function: ${functionName}\n`;
+          content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
         }
+      });
+      
+      // Add code blocks content
+      if (targetFile.codeBlocks && targetFile.codeBlocks.length > 0) {
+        targetFile.codeBlocks.forEach(block => {
+          content += `# ${block.name}\n`;
+          content += `${block.content}\n\n`;
+        });
       }
       
-      setFiles(files.map(f => f.id === fileId ? { ...f, codeBlocks: targetFile.codeBlocks } : f));
-      setDraggedCodeBlock(null);
-      // Update content after adding code block
-      setTimeout(() => updateFileContent(fileId), 0);
+      // Create updated file object (immutable update)
+      const updatedFile = {
+        ...targetFile,
+        functions: newFunctions,
+        functionsCode: newFunctionsCode,
+        content: content
+      };
+      
+      console.log('Function dropped:', draggedFunctionBlock.name);
+      console.log('Generated content:', content);
+      console.log('Updated file:', updatedFile);
+      
+      // Update files state with new file object
+      setFiles(prevFiles => prevFiles.map(f => f.id === fileId ? updatedFile : f));
+      
+      // Mark this function as moved so it doesn't appear on the left side
+      setMovedFunctions(prev => new Set([...prev, draggedFunctionBlock.name]));
     }
-  };
+    
+    setDraggedFunctionBlock(null);
+    
+  } else if (draggedFunction) {
+    // Handle regular function drag (from function list, not code blocks)
+    const updatedFiles = files.map(f => ({
+      ...f,
+      functions: f.functions.filter(func => func !== draggedFunction)
+    }));
+    
+    const targetFile = updatedFiles.find(f => f.id === fileId);
+    if (targetFile && !targetFile.functions.includes(draggedFunction)) {
+      const updatedTargetFile = {
+        ...targetFile,
+        functions: [...targetFile.functions, draggedFunction]
+      };
+      
+      // Update the files array with the modified target file
+      const finalFiles = updatedFiles.map(f => f.id === fileId ? updatedTargetFile : f);
+      setFiles(finalFiles);
+      
+      // Mark function as moved
+      setMovedFunctions(prev => new Set([...prev, draggedFunction]));
+    } else {
+      setFiles(updatedFiles);
+    }
+    
+    setDraggedFunction(null);
+    
+    // Update content after adding function
+    setTimeout(() => updateFileContent(fileId), 0);
+    
+  } else if (draggedCodeBlock) {
+    const targetFile = files.find(f => f.id === fileId);
+    if (targetFile) {
+      const newCodeBlocks = [...(targetFile.codeBlocks || [])];
+      if (!newCodeBlocks.find(block => block.name === draggedCodeBlock)) {
+        const codeContent = getCodeBlockContent(draggedCodeBlock);
+        newCodeBlocks.push({
+          name: draggedCodeBlock,
+          content: codeContent
+        });
+      }
+      
+      const updatedFile = {
+        ...targetFile,
+        codeBlocks: newCodeBlocks
+      };
+      
+      setFiles(prevFiles => prevFiles.map(f => f.id === fileId ? updatedFile : f));
+    }
+    
+    setDraggedCodeBlock(null);
+    
+    // Update content after adding code block
+    setTimeout(() => updateFileContent(fileId), 0);
+  }
+};
 
   const handleDropToTrash = (e) => {
     e.preventDefault();
@@ -1706,8 +1919,16 @@ if __name__ == "__main__":
       }));
       setFiles(updatedFiles);
       setDraggedFunction(null);
+      
+      // If the function was moved from the example code, return it to the left side
+      setMovedFunctions(prev => {
+        const newMovedFunctions = new Set(prev);
+        newMovedFunctions.delete(draggedFunction);
+        return newMovedFunctions;
+      });
+      
       // Update content for all files after removing function
-      files.forEach(file => setTimeout(() => updateFileContent(file.id), 0));
+      files.forEach(file => updateFileContent(file.id));
     } else if (draggedCodeBlock) {
       const updatedFiles = files.map(f => ({
         ...f,
@@ -1716,7 +1937,7 @@ if __name__ == "__main__":
       setFiles(updatedFiles);
       setDraggedCodeBlock(null);
       // Update content for all files after removing code block
-      files.forEach(file => setTimeout(() => updateFileContent(file.id), 0));
+      files.forEach(file => updateFileContent(file.id));
     }
   };
 
@@ -2728,61 +2949,37 @@ if __name__ == "__main__":
                     const codeLines = exampleCode.split('\n');
                     const line = index < codeLines.length ? codeLines[index] : '';
                     
-                    let backgroundColor = 'transparent';
-                    let groupLabel = '';
-                    let isGroupStart = false;
+                    // Use stored function blocks for color mapping
                     
-                    if (index >= 9 && index <= 66) { // Lines 010-067
-                      backgroundColor = 'rgba(139, 92, 246, 0.25)'; // Purple
-                      groupLabel = 'Group 1';
-                      isGroupStart = index === 9;
-                    } else if (index >= 96 && index <= 143) { // Lines 097-144
-                      backgroundColor = 'rgba(72, 187, 120, 0.25)'; // Green
-                      groupLabel = 'Group 2';
-                      isGroupStart = index === 96;
-                    } else if (index >= 146 && index <= 178) { // Lines 147-179
-                      backgroundColor = 'rgba(255, 159, 64, 0.25)'; // Orange
-                      groupLabel = 'Group 3';
-                      isGroupStart = index === 146;
+                    let functionBlock = null;
+                    let isFirstLineOfFunction = false;
+                    let isMovedFunction = false;
+                    
+                    // Find which function block this line belongs to
+                    for (const block of functionBlocks) {
+                      if (index >= block.startLine && index <= block.endLine) {
+                        if (movedFunctions.has(block.name)) {
+                          // This line belongs to a moved function
+                          isMovedFunction = true;
+                        } else {
+                          // Only show function if it hasn't been moved
+                          functionBlock = block;
+                          isFirstLineOfFunction = index === block.startLine;
+                        }
+                        break;
+                      }
+                    }
+                    
+                    const backgroundColor = functionBlock ? `${functionBlock.color}25` : 'transparent';
+                    const borderColor = functionBlock ? functionBlock.color : 'transparent';
+                    
+                    // Don't render lines that belong to moved functions
+                    if (isMovedFunction) {
+                      return null;
                     }
                     
                     return (
                       <div key={index} style={{ position: 'relative' }}>
-                        {isGroupStart && (
-                          <div
-                            style={{
-                              position: 'absolute',
-                              left: '-16px',
-                              right: '-16px',
-                              top: '-2px',
-                              height: `${(groupLabel === 'Group 1' ? 58 : groupLabel === 'Group 2' ? 48 : groupLabel === 'Group 3' ? 33 : 15) * fontSize * 1.4 + 4}rem`,
-                              backgroundColor: 'transparent',
-                              cursor: 'move',
-                              zIndex: 10,
-                              border: '2px dashed transparent',
-                              borderRadius: '6px',
-                              pointerEvents: 'auto'
-                            }}
-                            draggable
-                            onDragStart={(e) => handleCodeBlockDragStart(e, groupLabel)}
-                            onMouseEnter={(e) => {
-                              e.target.style.border = '2px dashed rgba(255,255,255,0.7)';
-                              e.target.style.backgroundColor = 'rgba(255,255,255,0.08)';
-                              e.target.style.boxShadow = '0 0 10px rgba(255,255,255,0.2)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.target.style.border = '2px dashed transparent';
-                              e.target.style.backgroundColor = 'transparent';
-                              e.target.style.boxShadow = 'none';
-                            }}
-                            title={`Drag ${groupLabel} (${
-                              groupLabel === 'Group 1' ? 'lines 010-067' : 
-                              groupLabel === 'Group 2' ? 'lines 097-144' :
-                              groupLabel === 'Group 3' ? 'lines 147-179' :
-                              'lines'
-                            })`}
-                          />
-                        )}
                         <div
                           style={{
                             backgroundColor: backgroundColor,
@@ -2794,28 +2991,52 @@ if __name__ == "__main__":
                             alignItems: 'center',
                             borderRadius: '3px',
                             opacity: index < codeLines.length ? 1 : 0.3,
-                            pointerEvents: isGroupStart ? 'none' : 'auto'
+                            borderLeft: functionBlock ? `3px solid ${functionBlock.color}` : 'none',
+                            pointerEvents: 'auto'
                           }}
                         >
                           <span style={{ flex: 1 }}>{line || ' '}</span>
-                          {isGroupStart && (
-                            <span style={{
-                              position: 'absolute',
-                              right: '20px',
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              color: backgroundColor.includes('72, 187, 120') ? '#48bb78' : 
-                                     backgroundColor.includes('139, 92, 246') ? '#8b5cf6' :
-                                     backgroundColor.includes('255, 159, 64') ? '#ff9f40' :
-                                     '#ff6384',
-                              fontWeight: 'bold',
-                              fontSize: `${fontSize * 0.75}rem`,
-                              backgroundColor: 'rgba(0,0,0,0.8)',
-                              padding: '2px 6px',
-                              borderRadius: '4px',
-                              border: '1px solid rgba(255,255,255,0.2)'
-                            }}>
-                              {groupLabel}
+                          {isFirstLineOfFunction && functionBlock && (
+                            <span 
+                              style={{
+                                position: 'absolute',
+                                right: '20px',
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                fontSize: `${fontSize * 0.75}rem`,
+                                backgroundColor: functionBlock.color,
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                cursor: 'grab',
+                                zIndex: 1001,
+                                userSelect: 'none'
+                              }}
+                              draggable
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                console.log('Function block clicked:', functionBlock);
+                                setSelectedFunction(functionBlock);
+                              }}
+                              onDragStart={(e) => {
+                                e.stopPropagation();
+                                setDraggedFunctionBlock(functionBlock);
+                                e.dataTransfer.effectAllowed = 'move';
+                              }}
+                              onDragEnd={() => setDraggedFunctionBlock(null)}
+                              onMouseEnter={(e) => {
+                                e.target.style.transform = 'translateY(-50%) scale(1.05)';
+                                e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.target.style.transform = 'translateY(-50%) scale(1)';
+                                e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+                              }}
+                              title={`Drag ${functionBlock.name}() function`}
+                            >
+                              📦 {functionBlock.name}()
                             </span>
                           )}
                         </div>
@@ -2979,6 +3200,40 @@ if __name__ == "__main__":
                 pr: 2,
                 pl: 1
               }}>
+                {/* Display code for dropped functions */}
+                {files.find(f => f.id === selectedFile)?.functions.map(functionName => {
+                  const functionCode = files.find(f => f.id === selectedFile)?.functionsCode?.[functionName];
+                  return (
+                    <Box key={functionName} sx={{ mb: 3 }}>
+                      <Typography variant="h6" sx={{ mb: 1, color: 'primary.main' }}>
+                        Function: {functionName}()
+                      </Typography>
+                      <Paper 
+                        elevation={1} 
+                        sx={{ 
+                          p: 2, 
+                          bgcolor: '#1a1a1a', 
+                          borderRadius: 1,
+                          border: '1px solid #333',
+                          maxHeight: 400,
+                          overflow: 'auto'
+                        }}
+                      >
+                        <pre style={{ 
+                          color: '#e2e8f0', 
+                          margin: 0, 
+                          whiteSpace: 'pre-wrap', 
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                          lineHeight: '1.4'
+                        }}>
+                          {functionCode || `def ${functionName}():\n    # Implementation here\n    pass`}
+                        </pre>
+                      </Paper>
+                    </Box>
+                  );
+                })}
+                
                 {/* Individual Functions */}
                 {files.find(f => f.id === selectedFile)?.functions.map(functionName => (
                   <Chip
@@ -3029,6 +3284,7 @@ if __name__ == "__main__":
                 ))}
               </Box>
             </Paper>
+
 
             {/* Control Buttons */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 3 }}>

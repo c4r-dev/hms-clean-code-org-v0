@@ -1,0 +1,99 @@
+.header-container {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    }
+  
+    .header-bar{
+      width: 100%;
+      display: flex;
+      align-items: center;
+      color: #ffffff83;
+      text-align: center;
+      justify-content: space-between;
+      min-height: 36px;
+    }
+  
+    .title-bar{
+      width: 100%;
+      display: flex;
+    }
+  
+   .header-exit-activity {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+  
+    .header-exit-activity:hover {
+      color: #FFFFFF;
+    }
+  
+  
+    .logo {
+      /* width: 100px; */
+      /* height: 100%; */
+      /* width: 3vh; */
+      /* aspect-ratio: 1/1; */
+      /* width: 100%; */
+      cursor: pointer; /* indicates clickable */
+      height: 36px;
+      width: 36px;
+    }
+  
+  
+    .header-title{
+      /* color: #FFFFFF; */
+      color: #000000;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+  
+    .logo-desktop {
+      display: none;
+    }
+  
+    .logo-mobile {
+      display: flex;
+    }
+  
+    .header-guide-button {
+      background-color: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+    }
+  
+    .help-tooltip-image {
+      height: 32px;
+      width: 32px;
+    }
+  
+    .help-tooltip-image:hover {
+      filter: invert(100%);
+    }
+  
+    /* If on desktop */
+    @media (min-width: 768px) {
+      .header-bar {
+        display: flex;
+      }
+      .logo-mobile {
+        display: none;
+      }
+      .logo-desktop {
+        display: flex;
+        gap: 2rem;
+        align-items: center;
+      }
+      .title-bar {
+        display: none;
+      }
+    }
+  
+    .header-guide-button-mobile {
+      margin-left: 1rem;
+      background-color: transparent;
+      border: none;
+      cursor: pointer;
+      display: flex;
+    }
