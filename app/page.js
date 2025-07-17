@@ -634,6 +634,14 @@ const CodeRefactoringInterface = () => {
     38: ''
   });
 
+  // Import management state
+  const [customImports, setCustomImports] = useState([
+    { id: 1, module: 'tifffile', items: 'imread', enabled: true },
+    { id: 2, module: '', items: '', enabled: true }
+  ]);
+  const [newImportModule, setNewImportModule] = useState('');
+  const [newImportItems, setNewImportItems] = useState('');
+
   // All useEffect hooks must be at the top, before any conditional logic
   
   // Initialize editable lines
@@ -798,6 +806,14 @@ const CodeRefactoringInterface = () => {
       );
     }
   }, [files, currentView, editableLines]);
+
+  // Initialize and update main.py content for final view
+  useEffect(() => {
+    if (currentView === 'final') {
+      const newMainContent = generateMainPyContentWithEditableLines();
+      setMainPyContent(newMainContent);
+    }
+  }, [currentView, customImports, files]);
 
   // Initialize file locations when organization view loads
   useEffect(() => {
@@ -1192,6 +1208,41 @@ if __name__ == "__main__":
     return path || '/';
   };
 
+  // Import management functions
+  const addNewImport = () => {
+    if (newImportModule.trim() && newImportItems.trim()) {
+      const newImport = {
+        id: Date.now(),
+        module: newImportModule.trim(),
+        items: newImportItems.trim(),
+        enabled: true
+      };
+      setCustomImports(prev => [...prev, newImport]);
+      setNewImportModule('');
+      setNewImportItems('');
+    }
+  };
+
+  const removeImport = (importId) => {
+    setCustomImports(prev => prev.filter(imp => imp.id !== importId));
+  };
+
+  const toggleImport = (importId) => {
+    setCustomImports(prev => 
+      prev.map(imp => 
+        imp.id === importId ? { ...imp, enabled: !imp.enabled } : imp
+      )
+    );
+  };
+
+  const updateImport = (importId, field, value) => {
+    setCustomImports(prev =>
+      prev.map(imp =>
+        imp.id === importId ? { ...imp, [field]: value } : imp
+      )
+    );
+  };
+
   // Enhanced helper function to generate main.py content with editable lines
   const generateMainPyContentWithEditableLines = () => {
     const assignedCodeBlocks = files.flatMap(f => f.codeBlocks?.map(block => block.name) || []);
@@ -1199,18 +1250,18 @@ if __name__ == "__main__":
     let mainContent = '';
     const lines = exampleCode.split('\n');
     
-    // Add imports (lines 0-5)
+    // Add initial imports (lines 0-5)
     mainContent += lines.slice(0, 6).join('\n') + '\n';
     
-    // Add editable lines 6-7 (existing import lines)
-    mainContent += (lines[6] || 'from tifffile import imread') + '\n';
-    mainContent += (lines[7] || ' ') + '\n';
+    // Add custom imports
+    customImports.forEach(imp => {
+      if (imp.enabled && imp.module && imp.items) {
+        mainContent += `from ${imp.module} import ${imp.items}\n`;
+      }
+    });
     
-    // Add new editable line 8 with the format "from [module] import [items]"
-    mainContent += 'from  import \n';
-    
-    // Add another editable line 9 
-    mainContent += ' \n';
+    // Add a blank line after imports
+    mainContent += '\n';
     
     // Add import statements for refactored files
     const refactoredFiles = files.filter(f => f.functions.length > 0 || (f.codeBlocks && f.codeBlocks.length > 0));
@@ -1438,6 +1489,196 @@ if __name__ == "__main__":
                 </Typography>
               </Box>
               
+              {/* Import Manager Section */}
+              <Box sx={{ 
+                p: 2, 
+                bgcolor: 'rgba(33, 150, 243, 0.1)', 
+                borderLeft: '4px solid #2196F3',
+                mb: 2
+              }}>
+                <Typography variant="h6" sx={{ color: '#2196F3', fontWeight: 'bold', mb: 2 }}>
+                  📦 Import Manager
+                </Typography>
+                
+                {/* Current Imports */}
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" sx={{ color: '#2196F3', mb: 1 }}>
+                    Current Import Statements:
+                  </Typography>
+                  
+                  {customImports.map((imp, index) => (
+                    <Box key={imp.id} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1, 
+                      mb: 1,
+                      p: 1,
+                      bgcolor: imp.enabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+                      borderRadius: 1,
+                      border: imp.enabled ? '1px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <Typography variant="body2" sx={{ color: 'white', minWidth: '40px' }}>
+                        {index + 7}:
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                        from
+                      </Typography>
+                      
+                      <TextField
+                        value={imp.module}
+                        onChange={(e) => updateImport(imp.id, 'module', e.target.value)}
+                        placeholder="module_name"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          minWidth: '120px',
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(255, 255, 255, 0.1)',
+                            color: '#ffd700',
+                            fontSize: '0.8rem',
+                            '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
+                            '&:hover fieldset': { borderColor: '#ffd700' },
+                            '&.Mui-focused fieldset': { borderColor: '#ffd700' }
+                          },
+                          '& .MuiInputBase-input': { color: '#ffd700' }
+                        }}
+                      />
+                      
+                      <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                        import
+                      </Typography>
+                      
+                      <TextField
+                        value={imp.items}
+                        onChange={(e) => updateImport(imp.id, 'items', e.target.value)}
+                        placeholder="function1, function2"
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          minWidth: '160px',
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(255, 255, 255, 0.1)',
+                            color: '#ffd700',
+                            fontSize: '0.8rem',
+                            '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
+                            '&:hover fieldset': { borderColor: '#ffd700' },
+                            '&.Mui-focused fieldset': { borderColor: '#ffd700' }
+                          },
+                          '& .MuiInputBase-input': { color: '#ffd700' }
+                        }}
+                      />
+                      
+                      <IconButton
+                        onClick={() => toggleImport(imp.id)}
+                        size="small"
+                        sx={{ 
+                          color: imp.enabled ? '#4CAF50' : '#9E9E9E',
+                          '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.1)' }
+                        }}
+                        title={imp.enabled ? 'Disable import' : 'Enable import'}
+                      >
+                        <CheckCircleIcon fontSize="small" />
+                      </IconButton>
+                      
+                      <IconButton
+                        onClick={() => removeImport(imp.id)}
+                        size="small"
+                        sx={{ 
+                          color: '#f44336',
+                          '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.1)' }
+                        }}
+                        title="Remove import"
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Box>
+                
+                {/* Add New Import */}
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 1,
+                  p: 2,
+                  bgcolor: 'rgba(76, 175, 80, 0.1)',
+                  borderRadius: 1,
+                  border: '1px dashed #4CAF50'
+                }}>
+                  <Typography variant="body2" sx={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                    Add:
+                  </Typography>
+                  
+                  <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                    from
+                  </Typography>
+                  
+                  <TextField
+                    value={newImportModule}
+                    onChange={(e) => setNewImportModule(e.target.value)}
+                    placeholder="module_name"
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      minWidth: '120px',
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: 'rgba(255, 255, 255, 0.1)',
+                        color: '#4CAF50',
+                        fontSize: '0.8rem',
+                        '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
+                        '&:hover fieldset': { borderColor: '#4CAF50' },
+                        '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
+                      },
+                      '& .MuiInputBase-input': { color: '#4CAF50' }
+                    }}
+                  />
+                  
+                  <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                    import
+                  </Typography>
+                  
+                  <TextField
+                    value={newImportItems}
+                    onChange={(e) => setNewImportItems(e.target.value)}
+                    placeholder="function1, function2"
+                    size="small"
+                    variant="outlined"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        addNewImport();
+                      }
+                    }}
+                    sx={{
+                      minWidth: '160px',
+                      '& .MuiOutlinedInput-root': {
+                        bgcolor: 'rgba(255, 255, 255, 0.1)',
+                        color: '#4CAF50',
+                        fontSize: '0.8rem',
+                        '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
+                        '&:hover fieldset': { borderColor: '#4CAF50' },
+                        '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
+                      },
+                      '& .MuiInputBase-input': { color: '#4CAF50' }
+                    }}
+                  />
+                  
+                  <Button
+                    onClick={addNewImport}
+                    variant="contained"
+                    size="small"
+                    disabled={!newImportModule.trim() || !newImportItems.trim()}
+                    sx={{
+                      bgcolor: '#4CAF50',
+                      '&:hover': { bgcolor: '#45a049' },
+                      '&:disabled': { bgcolor: 'rgba(76, 175, 80, 0.3)' }
+                    }}
+                  >
+                    Add Import
+                  </Button>
+                </Box>
+              </Box>
+              
               {/* Editable Lines Info Banner */}
               <Box sx={{ 
                 p: 2, 
@@ -1449,9 +1690,7 @@ if __name__ == "__main__":
               }}>
                 <EditIcon sx={{ color: '#ffd700', fontSize: '1.2rem' }} />
                 <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold' }}>
-                  💡 Yellow highlighted sections are editable:<br />
-                  • Line 8: Click on the first block to edit module name, click on the second block to edit import items (from [module] import [items])<br />
-                  • Line 9: Click to add additional import or code<br />
+                  💡 Additional editable sections:<br />
                   • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
                 </Typography>
               </Box>
@@ -1465,16 +1704,6 @@ if __name__ == "__main__":
                   editableLines={(() => {
                     const lines = mainPyContent.split('\n');
                     const editableIndexes = [];
-                    
-                    // Make line 8 editable (the "from __ import __" line)
-                    if (lines[8] && lines[8].includes('from ') && lines[8].includes(' import ')) {
-                      editableIndexes.push(8);
-                    }
-                    
-                    // Make line 9 editable (the blank line after the import)
-                    if (lines[9] !== undefined) {
-                      editableIndexes.push(9);
-                    }
                     
                     // Find line with load_file call containing {filename}
                     for (let i = 0; i < lines.length; i++) {
@@ -1519,7 +1748,9 @@ if __name__ == "__main__":
             <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
               <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
                 Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
-                Line 8 contains two editable blocks for import statement (module name and import items), line 9 is editable for additional imports, and the path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
+                The Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
+                The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
+                Students can enable/disable imports and see real-time updates in the code editor.
               </Typography>
             </Paper>
           </Box>
@@ -2210,9 +2441,8 @@ if __name__ == "__main__":
       console.log('Folders:', folders);
       console.log('Final file locations:', fileLocations);
       
-      // Initialize main.py content for final view
-      const mainFile = organizationFiles.find(f => f.id === 'main');
-      setMainPyContent(mainFile?.content || generateMainPyContentWithEditableLines());
+      // Initialize main.py content for final view with custom imports
+      setMainPyContent(generateMainPyContentWithEditableLines());
       setCurrentView('final');
       return;
     }
