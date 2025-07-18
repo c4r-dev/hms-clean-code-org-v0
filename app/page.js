@@ -1252,6 +1252,22 @@ if __name__ == "__main__":
     );
   };
 
+  // File structure export function (moved up to avoid hoisting issues)
+  const exportFileStructure = () => {
+    const structure = {
+      folders: folders.map(folder => ({
+        id: folder.id,
+        name: folder.name,
+        path: `/${folder.name}`,
+        parent: folder.parent
+      })),
+      files: Object.values(fileLocations),
+      generatedAt: new Date().toISOString()
+    };
+    
+    return JSON.stringify(structure, null, 2);
+  };
+
   // Simplified validation function
   const validateImportsAndStructure = () => {
     const results = {
@@ -2029,21 +2045,6 @@ if __name__ == "__main__":
 
   const getAllFileLocations = () => {
     return fileLocations;
-  };
-
-  const exportFileStructure = () => {
-    const structure = {
-      folders: folders.map(folder => ({
-        id: folder.id,
-        name: folder.name,
-        path: `/${folder.name}`,
-        parent: folder.parent
-      })),
-      files: Object.values(fileLocations),
-      generatedAt: new Date().toISOString()
-    };
-    
-    return JSON.stringify(structure, null, 2);
   };
 
   const validateOrganization = () => {
