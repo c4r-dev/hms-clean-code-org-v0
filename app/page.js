@@ -1268,7 +1268,7 @@ if __name__ == "__main__":
     return JSON.stringify(structure, null, 2);
   };
 
-  // Simplified validation function
+  // File-focused validation function
   const validateImportsAndStructure = () => {
     const results = {
       isValid: true,
@@ -1282,50 +1282,67 @@ if __name__ == "__main__":
       const fileStructureJson = exportFileStructure();
       const fileStructure = JSON.parse(fileStructureJson);
 
-      // Find folders that contain files (our created/moved files)
-      const foldersWithFiles = [];
-      fileStructure.files.forEach(file => {
-        if (!file.isInRoot && file.fileId !== 'main' && file.folderName) {
-          if (!foldersWithFiles.includes(file.folderName)) {
-            foldersWithFiles.push(file.folderName);
-          }
+      // Find all files that are in folders (not in root, excluding main.py)
+      const filesInFolders = fileStructure.files.filter(file => 
+        !file.isInRoot && file.fileId !== 'main' && file.folderName
+      );
+
+      if (filesInFolders.length === 0) {
+        results.warnings.push('No files have been organized into folders yet.');
+        setValidationResults(results);
+        setShowValidation(true);
+        return results;
+      }
+
+      // Get all imported file names from custom import statements
+      const importedFiles = new Set();
+      customImports
+        .filter(imp => imp.enabled && imp.module && imp.items)
+        .filter(imp => !['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(imp.module))
+        .forEach(imp => {
+          // Split items by comma and clean up whitespace
+          const items = imp.items.split(',').map(item => item.trim()).filter(item => item);
+          items.forEach(item => importedFiles.add(item));
+        });
+
+      // Check each file in folders
+      const missingFiles = [];
+      const accountedFiles = [];
+
+      filesInFolders.forEach(file => {
+        // Remove .py extension to match import format
+        const fileName = file.fileName.replace('.py', '');
+        
+        if (importedFiles.has(fileName)) {
+          accountedFiles.push(file);
+          results.successes.push(`✓ File "${file.fileName}" in folder "${file.folderName}" is imported`);
+        } else {
+          missingFiles.push(file);
+          results.errors.push(`✗ File "${file.fileName}" in folder "${file.folderName}" is NOT imported`);
+          results.isValid = false;
         }
       });
 
-      // Get our custom import statements (ignore built-in imports)
-      const customImportModules = customImports
-        .filter(imp => imp.enabled && imp.module && imp.items)
-        .filter(imp => !['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(imp.module))
-        .map(imp => imp.module);
-
-      // Simple validation: do our import modules match our folder names?
-      if (foldersWithFiles.length === 0) {
-        results.warnings.push('No files have been organized into folders yet.');
-      } else if (customImportModules.length === 0) {
-        results.errors.push(`You have files organized in ${foldersWithFiles.length} folder(s) (${foldersWithFiles.join(', ')}) but no custom import statements to import from them.`);
-        results.isValid = false;
+      // Summary messages
+      if (results.isValid) {
+        results.successes.push(`🎉 All ${filesInFolders.length} files in folders are properly imported!`);
       } else {
-        // Check each folder has a matching import
-        foldersWithFiles.forEach(folderName => {
-          if (customImportModules.includes(folderName)) {
-            results.successes.push(`✓ Folder "${folderName}" has matching import statement`);
-          } else {
-            results.errors.push(`✗ Folder "${folderName}" contains files but has no import statement`);
-            results.isValid = false;
+        results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} files are missing from import statements`);
+      }
+
+      // Show which files need to be imported
+      if (missingFiles.length > 0) {
+        const filesByFolder = {};
+        missingFiles.forEach(file => {
+          if (!filesByFolder[file.folderName]) {
+            filesByFolder[file.folderName] = [];
           }
+          filesByFolder[file.folderName].push(file.fileName.replace('.py', ''));
         });
 
-        // Check each import has a matching folder
-        customImportModules.forEach(moduleName => {
-          if (!foldersWithFiles.includes(moduleName)) {
-            results.warnings.push(`⚠ Import "from ${moduleName} import ..." doesn't match any folder name`);
-          }
+        Object.entries(filesByFolder).forEach(([folderName, fileNames]) => {
+          results.errors.push(`💡 Add: "from ${folderName} import ${fileNames.join(', ')}"`);
         });
-
-        // Summary
-        if (results.isValid) {
-          results.successes.push(`✓ All ${foldersWithFiles.length} folder(s) have corresponding import statements`);
-        }
       }
 
     } catch (error) {
