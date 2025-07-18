@@ -470,7 +470,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
           right: 0,
           minHeight: '100%'
         }}>
-          {lines.map((_, index) => (
+          {Array.from({length: Math.max(lines.length, 250)}, (_, index) => (
             <div 
               key={index}
               style={{ 
@@ -486,7 +486,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                 backgroundColor: isEditableLine(index) ? 'rgba(255, 215, 0, 0.1)' : 'transparent'
               }}
             >
-              {String(index + 1).padStart(2, '0')}
+              {String(index + 1).padStart(3, ' ')}
               {isEditableLine(index) && (
                 <Box
                   component="span"
@@ -508,7 +508,9 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
       {/* Code Content Container */}
       <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }} onScroll={handleScroll}>
         <Box sx={{ padding: '8px 12px' }}>
-          {lines.map((line, index) => (
+          {Array.from({length: Math.max(lines.length, 250)}, (_, index) => {
+            const line = index < lines.length ? lines[index] : '';
+            return (
             <div
               key={index}
               style={{
@@ -573,7 +575,8 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                 </>
               )}
             </div>
-          ))}
+            );
+          })}
         </Box>
       </Box>
     </Box>
@@ -634,17 +637,61 @@ const CodeRefactoringInterface = () => {
     38: ''
   });
 
+  // Line count state for avoiding hydration errors
+  const [lineCountInfo, setLineCountInfo] = useState({
+    codeLines: 0,
+    totalLines: 0,
+    lastCodeLine: 0,
+    description: ''
+  });
+  
+  // Track if component is mounted to prevent hydration errors
+  const [isMounted, setIsMounted] = useState(false);
+
   // All useEffect hooks must be at the top, before any conditional logic
   
   // Initialize editable lines
   useEffect(() => {
     const lines = exampleCode.split('\n');
     setEditableLines({
-      6: lines[6] || 'from tifffile import imread',
-      7: lines[7] || ' ',
-      8: 'from  import ',
+      6: 'from tifffile import imread', // Keep only this default import
+      7: ' ',
+      8: ' ', // Change from "from  import " to just a space
       9: ' ',
       38: lines[38] || '    blur_factor = 1'
+    });
+  }, []);
+
+  // Calculate line counts on client side to avoid hydration errors
+  useEffect(() => {
+    setIsMounted(true);
+    
+    const lines = exampleCode.split('\n');
+    const totalLines = lines.length;
+    const codeLines = lines.filter(line => line.trim() !== '').length;
+    
+    let lastCodeLine = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].trim() !== '') {
+        lastCodeLine = i + 1; // Convert to 1-based indexing
+        break;
+      }
+    }
+    
+    const emptyLines = totalLines - lastCodeLine;
+    let description = '';
+    
+    if (emptyLines > 0) {
+      description = `Lines 1-${lastCodeLine} contain code, lines ${lastCodeLine + 1}-${totalLines} are empty`;
+    } else {
+      description = `Lines 1-${totalLines} contain code, no empty lines`;
+    }
+    
+    setLineCountInfo({
+      codeLines,
+      totalLines,
+      lastCodeLine,
+      description
     });
   }, []);
 
@@ -712,59 +759,66 @@ const CodeRefactoringInterface = () => {
       };
       
       // Add standard project files
-      const standardFiles = [
-        {
-          id: 'init',
-          name: '__init__.py',
-          type: 'PY File',
-          description: 'Python package initialization file',
-          folder: null,
-          functions: [],
-          codeBlocks: []
-        },
-        {
-          id: 'png',
-          name: '201.png',
-          type: 'IMG File',
-          description: 'Image file',
-          folder: null
-        },
-        {
-          id: 'nd2',
-          name: '201.nd2',
-          type: 'DATA File',
-          description: 'Microscopy data file',
-          folder: null
-        },
-        {
-          id: 'nd2_tail',
-          name: '20191010_tail_01.nd2',
-          type: 'DATA File',
-          description: 'Microscopy data file - tail experiment from 2019',
-          folder: null
-        },
-        {
-          id: 'qpdata',
-          name: '20191010_tail_01.qpdata',
-          type: 'DATA File',
-          description: 'Quantitative phase data file',
-          folder: null
-        },
-        {
-          id: 'tif_vang',
-          name: '20240523_Vang-1_37.tif',
-          type: 'IMG File',
-          description: 'TIFF image file - Vang experiment from 2024',
-          folder: null
-        },
-        {
-          id: 'citations',
-          name: 'citations.txt',
-          type: 'TXT File',
-          description: 'Text file containing citations and references',
-          folder: null
-        }
-      ];
+    // Add standard project files
+    // Add standard project files
+        const standardFiles = [
+          {
+            id: 'nd2_tail',
+            name: '20191010_tail_01.nd2',
+            type: 'DATA File',
+            description: 'A Nikon data file generated by proprietary microscopy software.',
+            folder: null
+          },
+          {
+            id: 'nwb_sub11',
+            name: 'sub-11-YAaLR_ophys.nwb',
+            type: 'DATA File',
+            description: 'A NeuroDataWithoutBorders file. Its contents include a microscopy image, metadata describing that image, and metadata related to the experiment in whose context the image was captured.',
+            folder: null
+          },
+          {
+            id: 'tif_vang',
+            name: '20240523_Vang-1_37.tif',
+            type: 'IMG File',
+            description: 'A Tagged Image File featuring a microscopy image. This file was generated using the Fiji image processing package.',
+            folder: null
+          },
+          {
+            id: 'comparison_vang',
+            name: '20240523_Vang-1_37_comparison.png',
+            type: 'IMG File',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            folder: null
+          },
+          {
+            id: 'comparison_tail',
+            name: '20191010_tail_01_comparison.png',
+            type: 'IMG File',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            folder: null
+          },
+          {
+            id: 'sub11_comparison',
+            name: 'sub-11-YAaLR_ophys_comparison.png',
+            type: 'IMG File',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            folder: null
+          },
+          {
+            id: 'overview',
+            name: 'overview.png',
+            type: 'IMG File',
+            description: 'A chart visualizing three fully processed microscopy images. Generated by main.py.',
+            folder: null
+          },
+          {
+            id: 'citations',
+            name: 'citations.txt',
+            type: 'TXT File',
+            description: 'A text file listing three different citations, one for each microscopy image.',
+            folder: null
+          }
+        ];
       
       const allFiles = [mainFile, ...standardFiles, ...initialFiles];
       setOrganizationFiles(allFiles);
@@ -825,23 +879,56 @@ const CodeRefactoringInterface = () => {
     
     console.log('parseFunctionBlocks called with', lines.length, 'lines');
     
-    // Colors for different functions
+    // Colors for different functions and imports - highly diverse and distinct
     const colors = [
-      '#8b5cf6', // Purple
-      '#48bb78', // Green
-      '#ff9f40', // Orange
-      '#3182ce', // Blue
-      '#ed8936', // Orange-red
-      '#38b2ac', // Teal
-      '#9f7aea', // Purple-light
-      '#68d391', // Green-light
+      '#FF3366', // Crimson Red
+      '#33FF66', // Emerald Green
+      '#3366FF', // Royal Blue
+      '#FF9933', // Burnt Orange
+      '#9933FF', // Electric Purple
+      '#33FF99', // Turquoise
+      '#FF6633', // Coral
+      '#66FF33', // Lime
+      '#6633FF', // Indigo
+      '#FF3399', // Hot Pink
+      '#99FF33', // Chartreuse
+      '#3399FF', // Sky Blue
+      '#FFCC33', // Golden Yellow
+      '#CC33FF', // Violet
+      '#33FFCC', // Aqua
+      '#FF33CC', // Fuchsia
+      '#CCFF33', // Yellow Green
+      '#33CCFF', // Light Blue
+      '#FF6699', // Rose
+      '#66FF99', // Seafoam
+      '#9966FF', // Lavender Purple
+      '#FF9966', // Peach
+      '#66FF66', // Mint Green
+      '#FF6666', // Salmon
     ];
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      // Check if this is a function definition
-      if (line.trim().startsWith('def ') && line.trim().endsWith(':')) {
+      // Check if this is an import statement
+      if (line.trim().startsWith('import ') || line.trim().startsWith('from ')) {
+        console.log('Found import statement at line', i, ':', line.trim());
+        // Each import is a single-line block
+        const importName = line.trim().startsWith('import ') ? 
+          line.trim().substring(7) : 
+          line.trim().match(/from\s+(.+?)\s+import/)?.[1] || line.trim();
+        
+        blocks.push({
+          name: importName,
+          startLine: i,
+          endLine: i,
+          lines: [line],
+          color: colors[blocks.length % colors.length],
+          type: 'import'
+        });
+      }
+      // Check if this is a function definition (but not main block)
+      else if (line.trim().startsWith('def ') && line.trim().endsWith(':')) {
         console.log('Found function definition at line', i, ':', line.trim());
         // Save previous block if exists
         if (currentBlock) {
@@ -865,8 +952,11 @@ const CodeRefactoringInterface = () => {
         // Add line to current block
         currentLines.push(line);
         
-        // Check if we've reached the end of the function (next function or end of code)
-        if (i === lines.length - 1 || (lines[i + 1] && lines[i + 1].trim().startsWith('def ') && lines[i + 1].trim().endsWith(':'))) {
+        // Check if we've reached the end of the function (next function, main block, or end of code)
+        const nextLine = lines[i + 1];
+        if (i === lines.length - 1 || 
+            (nextLine && nextLine.trim().startsWith('def ') && nextLine.trim().endsWith(':')) ||
+            (nextLine && nextLine.trim().startsWith('if __name__ == "__main__":'))) {
           blocks.push({
             ...currentBlock,
             lines: currentLines,
@@ -1206,24 +1296,12 @@ if __name__ == "__main__":
     mainContent += (lines[6] || 'from tifffile import imread') + '\n';
     mainContent += (lines[7] || ' ') + '\n';
     
-    // Add new editable line 8 with the format "from [module] import [items]"
-    mainContent += 'from  import \n';
-    
-    // Add another editable line 9 
+    // Add editable blank lines for user to add custom imports
+    mainContent += ' \n';
     mainContent += ' \n';
     
-    // Add import statements for refactored files
-    const refactoredFiles = files.filter(f => f.functions.length > 0 || (f.codeBlocks && f.codeBlocks.length > 0));
-    refactoredFiles.forEach(file => {
-      const moduleName = file.name.replace('.py', '');
-      if (file.functions.length > 0) {
-        mainContent += `from ${moduleName} import ${file.functions.join(', ')}\n`;
-      }
-    });
-    
-    if (refactoredFiles.length > 0) {
-      mainContent += '\n';
-    }
+    // Don't add automatic import statements - users will add them manually
+    mainContent += '\n';
     
     // Define code block ranges based on current highlighting (adjusted for new lines)
     const codeBlockRanges = {
@@ -1240,6 +1318,19 @@ if __name__ == "__main__":
       if (codeBlockRanges[blockName]) {
         const [start, end] = codeBlockRanges[blockName];
         for (let i = start; i <= end; i++) {
+          excludedLines.add(i);
+        }
+      }
+    });
+    
+    // Mark lines from assigned functions
+    const assignedFunctions = files.flatMap(f => f.functions);
+    const parsedBlocks = parseFunctionBlocks(exampleCode);
+    
+    parsedBlocks.forEach(block => {
+      if (block.type === 'function' && assignedFunctions.includes(block.name)) {
+        // Exclude all lines of assigned functions
+        for (let i = block.startLine; i <= block.endLine; i++) {
           excludedLines.add(i);
         }
       }
@@ -1284,7 +1375,7 @@ if __name__ == "__main__":
         {/* Header */}
         <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'grey.300' }}>
           <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
-            {'{Activity Title}'}
+            Codebase Organization
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Some of the changes you&apos;ve made require that you update main.py to ensure that 
@@ -1300,10 +1391,13 @@ if __name__ == "__main__":
             onClick={() => setFinalView('main')}
             sx={{ 
               mr: 2,
-              bgcolor: finalView === 'main' ? 'grey.800' : 'transparent',
-              color: finalView === 'main' ? 'white' : 'black',
+              bgcolor: finalView === 'main' ? 'black' : 'black',
+              color: 'white',
               '&:hover': {
-                bgcolor: finalView === 'main' ? 'grey.700' : 'grey.200'
+                bgcolor: '#6e00ff'
+              },
+              '&:active': {
+                bgcolor: '#6e00ff'
               }
             }}
           >
@@ -1313,10 +1407,13 @@ if __name__ == "__main__":
             variant={finalView === 'directory' ? 'contained' : 'outlined'}
             onClick={() => setFinalView('directory')}
             sx={{ 
-              bgcolor: finalView === 'directory' ? 'grey.800' : 'transparent',
-              color: finalView === 'directory' ? 'white' : 'black',
+              bgcolor: finalView === 'directory' ? 'black' : 'black',
+              color: 'white',
               '&:hover': {
-                bgcolor: finalView === 'directory' ? 'grey.700' : 'grey.200'
+                bgcolor: '#6e00ff'
+              },
+              '&:active': {
+                bgcolor: '#6e00ff'
               }
             }}
           >
@@ -1494,9 +1591,10 @@ if __name__ == "__main__":
                 <Button
                   variant="contained"
                   sx={{ 
-                    bgcolor: 'grey.700',
+                    bgcolor: 'black',
                     color: 'white',
-                    '&:hover': { bgcolor: 'grey.600' }
+                    '&:hover': { bgcolor: '#6e00ff' },
+                    '&:active': { bgcolor: '#6e00ff' }
                   }}
                 >
                   EXPAND SCRIPT
@@ -1507,7 +1605,8 @@ if __name__ == "__main__":
                   sx={{ 
                     bgcolor: 'black',
                     color: 'white',
-                    '&:hover': { bgcolor: 'grey.800' }
+                    '&:hover': { bgcolor: '#6e00ff' },
+                    '&:active': { bgcolor: '#6e00ff' }
                   }}
                 >
                   EXECUTE SCRIPT
@@ -1531,11 +1630,16 @@ if __name__ == "__main__":
             variant="outlined"
             onClick={() => setCurrentView('organize')}
             sx={{ 
-              color: 'grey.600',
-              borderColor: 'grey.600',
+              bgcolor: 'black',
+              color: 'white',
+              borderColor: 'black',
               '&:hover': { 
-                borderColor: 'grey.800',
-                bgcolor: 'grey.100'
+                bgcolor: '#6e00ff',
+                borderColor: '#6e00ff'
+              },
+              '&:active': { 
+                bgcolor: '#6e00ff',
+                borderColor: '#6e00ff'
               }
             }}
           >
@@ -1547,7 +1651,8 @@ if __name__ == "__main__":
             sx={{ 
               bgcolor: 'black',
               color: 'white',
-              '&:hover': { bgcolor: 'grey.800' }
+              '&:hover': { bgcolor: '#6e00ff' },
+              '&:active': { bgcolor: '#6e00ff' }
             }}
           >
             NEXT
@@ -1678,6 +1783,37 @@ if __name__ == "__main__":
   };
 
   const addNewFile = () => {
+    // Check if there are any import statements in the main.py content and editable lines
+    const hasImportStatements = () => {
+      // Check main content
+      const lines = mainPyContent.split('\n');
+      const hasImportsInMain = lines.some(line => {
+        const trimmedLine = line.trim();
+        return trimmedLine.startsWith('import ') || trimmedLine.startsWith('from ');
+      });
+
+      // Check editable lines for any meaningful imports
+      const hasImportsInEditableLines = Object.values(editableLines).some(line => {
+        const trimmedLine = line.trim();
+        // Check if it's a meaningful import (not empty "from import" or just spaces)
+        return (trimmedLine.startsWith('import ') || trimmedLine.startsWith('from ')) && 
+               trimmedLine !== 'from  import ' && 
+               trimmedLine !== 'from import' &&
+               trimmedLine.length > 5; // Must be more than just "from " or "import "
+      });
+
+      return hasImportsInMain || hasImportsInEditableLines;
+    };
+
+    if (!hasImportStatements()) {
+      // Show error dialog if no import statements found
+      setErrorDialog({
+        open: true,
+        message: 'You must add at least one import statement to the main.py file before creating a new file. Please add an import statement in the editable lines (lines 7-9) and try again.'
+      });
+      return;
+    }
+
     const newFile = {
       id: Date.now(),
       name: `file ${files.length + 1}.py`,
@@ -1799,31 +1935,106 @@ if __name__ == "__main__":
   
   if (draggedFunctionBlock) {
     const targetFile = files.find(f => f.id === fileId);
-    if (targetFile && !targetFile.functions.includes(draggedFunctionBlock.name)) {
+    
+    if (draggedFunctionBlock.type === 'import') {
+      // Handle import drops
+      const importName = draggedFunctionBlock.name;
+      const importContent = draggedFunctionBlock.lines.join('\n');
       
-      // Create new functionsCode object
-      const newFunctionsCode = {
-        ...(targetFile.functionsCode || {}),
-        [draggedFunctionBlock.name]: draggedFunctionBlock.lines.join('\n')
-      };
-      
-      // Create new functions array
-      const newFunctions = [...targetFile.functions, draggedFunctionBlock.name];
-      
-      // Generate content
-      let content = `# ${targetFile.name}\n\n`;
-      
-      // Add functions content
-      newFunctions.forEach(functionName => {
-        if (newFunctionsCode[functionName]) {
-          // Use actual function code if available
-          content += `${newFunctionsCode[functionName]}\n\n`;
-        } else {
-          // Fallback to placeholder code
-          content += `# Function: ${functionName}\n`;
-          content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+      if (targetFile && !targetFile.imports?.includes(importName)) {
+        // Create new imports array
+        const newImports = [...(targetFile.imports || []), importName];
+        
+        // Create new importsCode object
+        const newImportsCode = {
+          ...(targetFile.importsCode || {}),
+          [importName]: importContent
+        };
+        
+        // Generate content with imports at the top
+        let content = `# ${targetFile.name}\n\n`;
+        
+        // Add imports first
+        newImports.forEach(importName => {
+          if (newImportsCode[importName]) {
+            content += `${newImportsCode[importName]}\n`;
+          }
+        });
+        content += '\n';
+        
+        // Add functions content
+        targetFile.functions.forEach(functionName => {
+          if (targetFile.functionsCode?.[functionName]) {
+            content += `${targetFile.functionsCode[functionName]}\n\n`;
+          } else {
+            content += `# Function: ${functionName}\n`;
+            content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+          }
+        });
+        
+        // Add code blocks content
+        if (targetFile.codeBlocks && targetFile.codeBlocks.length > 0) {
+          targetFile.codeBlocks.forEach(block => {
+            content += `# ${block.name}\n`;
+            content += `${block.content}\n\n`;
+          });
         }
-      });
+        
+        // Create updated file object
+        const updatedFile = {
+          ...targetFile,
+          imports: newImports,
+          importsCode: newImportsCode,
+          content: content
+        };
+        
+        console.log('Import dropped:', importName);
+        console.log('Generated content:', content);
+        console.log('Updated file:', updatedFile);
+        
+        // Update files array
+        const updatedFiles = files.map(f => f.id === fileId ? updatedFile : f);
+        setFiles(updatedFiles);
+        
+        // Don't mark imports as moved - they can be dragged multiple times
+      }
+    } else if (draggedFunctionBlock.type === 'function') {
+      // Handle function drops (existing logic)
+      if (targetFile && !targetFile.functions.includes(draggedFunctionBlock.name)) {
+        
+        // Create new functionsCode object
+        const newFunctionsCode = {
+          ...(targetFile.functionsCode || {}),
+          [draggedFunctionBlock.name]: draggedFunctionBlock.lines.join('\n')
+        };
+        
+        // Create new functions array
+        const newFunctions = [...targetFile.functions, draggedFunctionBlock.name];
+        
+        // Generate content
+        let content = `# ${targetFile.name}\n\n`;
+        
+        // Add imports first if any
+        if (targetFile.imports && targetFile.imports.length > 0) {
+          targetFile.imports.forEach(importName => {
+            if (targetFile.importsCode?.[importName]) {
+              content += `${targetFile.importsCode[importName]}\n`;
+            }
+          });
+          content += '\n';
+        }
+        
+        // Add functions content
+        newFunctions.forEach(functionName => {
+          if (newFunctionsCode[functionName]) {
+            // Use actual function code if available
+            content += `${newFunctionsCode[functionName]}\n\n`;
+          } else {
+            // Fallback to placeholder code
+            content += `# Function: ${functionName}\n`;
+            content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+          }
+        });
       
       // Add code blocks content
       if (targetFile.codeBlocks && targetFile.codeBlocks.length > 0) {
@@ -1848,8 +2059,9 @@ if __name__ == "__main__":
       // Update files state with new file object
       setFiles(prevFiles => prevFiles.map(f => f.id === fileId ? updatedFile : f));
       
-      // Mark this function as moved so it doesn't appear on the left side
-      setMovedFunctions(prev => new Set([...prev, draggedFunctionBlock.name]));
+        // Mark this function as moved so it doesn't appear on the left side
+        setMovedFunctions(prev => new Set([...prev, draggedFunctionBlock.name]));
+      }
     }
     
     setDraggedFunctionBlock(null);
@@ -2167,7 +2379,7 @@ if __name__ == "__main__":
     
     // Get all created files (excluding main.py and standard project files)
     const createdFiles = organizationFiles.filter(f => 
-      f.id !== 'main' && f.id !== 'init' && f.id !== 'png' && f.id !== 'nd2' && 
+      f.id !== 'main' && f.id !== 'png' && f.id !== 'nd2' && 
       f.id !== 'nd2_tail' && f.id !== 'qpdata' && f.id !== 'tif_vang' && f.id !== 'citations'
     );
     
@@ -2461,8 +2673,8 @@ if __name__ == "__main__":
         {/* Header */}
         <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'grey.300' }}>
           <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
-            {'{Activity Title}'}
-          </Typography>
+Codebase Organization          
+</Typography>
           <Typography variant="body2" color="text.secondary">
             Zooming out, the project appears to have matured to a point at which it may prove 
             prudent to organize it a little. Use the interface below to investigate each file and 
@@ -2530,7 +2742,8 @@ if __name__ == "__main__":
               sx={{ 
                 bgcolor: 'black', 
                 color: 'white',
-                '&:hover': { bgcolor: 'grey.800' },
+                '&:hover': { bgcolor: '#6e00ff' },
+                '&:active': { bgcolor: '#6e00ff' },
                 mb: 2
               }}
             >
@@ -2544,9 +2757,17 @@ if __name__ == "__main__":
               sx={{ 
                 mb: 2,
                 ml: 2,
-                bgcolor: 'info.main',
+                bgcolor: 'black',
                 color: 'white',
-                '&:hover': { bgcolor: 'info.dark' }
+                borderColor: 'black',
+                '&:hover': { 
+                  bgcolor: '#6e00ff',
+                  borderColor: '#6e00ff'
+                },
+                '&:active': { 
+                  bgcolor: '#6e00ff',
+                  borderColor: '#6e00ff'
+                }
               }}
             >
               DEBUG FILE LOCATIONS
@@ -2563,11 +2784,8 @@ if __name__ == "__main__":
                 
                 {selectedOrgFile ? (
                   <Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <Typography variant="h6" gutterBottom sx={{ mb: 0, mr: 1 }}>
-                        {selectedOrgFile.name}
-                      </Typography>
-                      {selectedOrgFile.id === 'main' && (
+                    {selectedOrgFile.id === 'main' && (
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Typography 
                           variant="caption" 
                           sx={{ 
@@ -2582,30 +2800,11 @@ if __name__ == "__main__":
                         >
                           MAIN SCRIPT
                         </Typography>
-                      )}
-                    </Box>
-                    <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold', mb: 1 }}>
-                      {selectedOrgFile.type}
-                    </Typography>
+                      </Box>
+                    )}
                     <Typography variant="body2" color="text.secondary">
                       {selectedOrgFile.description}
                     </Typography>
-                    
-                    {/* Show file location */}
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2" gutterBottom>
-                        Location:
-                      </Typography>
-                      <Typography variant="body2" sx={{ 
-                        fontFamily: 'monospace',
-                        bgcolor: 'grey.100',
-                        p: 1,
-                        borderRadius: 1,
-                        fontSize: '0.8rem'
-                      }}>
-                        {getFileLocation(selectedOrgFile.id)?.fullLocation || 'Unknown'}
-                      </Typography>
-                    </Box>
                     
                     {selectedOrgFile.functions && selectedOrgFile.functions.length > 0 && (
                       <Box sx={{ mt: 2 }}>
@@ -2632,37 +2831,12 @@ if __name__ == "__main__":
                       </Box>
                     )}
                     
-                    {selectedOrgFile.codeBlocks && selectedOrgFile.codeBlocks.length > 0 && (
-                      <Box sx={{ mt: 2 }}>
-                        <Typography variant="subtitle2" gutterBottom>
-                          Code Blocks:
-                        </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                          {selectedOrgFile.codeBlocks.map(block => (
-                            <Box 
-                              key={block.name}
-                              sx={{ 
-                                bgcolor: 'secondary.main', 
-                                color: 'white', 
-                                px: 1, 
-                                py: 0.5, 
-                                borderRadius: 1,
-                                fontSize: '0.8rem'
-                              }}
-                            >
-                              {block.name}
-                            </Box>
-                          ))}
-                        </Box>
-                      </Box>
-                    )}
-                    
                     {selectedOrgFile.content && selectedOrgFile.type === 'PY File' && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>
                           File Content:
                         </Typography>
-                        <Box sx={{ maxHeight: 400, overflow: 'hidden' }}>
+                        <Box sx={{ maxHeight: 600, overflow: 'auto' }}>
                           <EnhancedCodeEditor
                             content={selectedOrgFile.content}
                             onChange={() => {}} // Read-only in organize view
@@ -2688,9 +2862,10 @@ if __name__ == "__main__":
             variant="contained"
             onClick={() => setCurrentView('refactoring')}
             sx={{ 
-              bgcolor: 'grey.600', 
+              bgcolor: 'black', 
               color: 'white',
-              '&:hover': { bgcolor: 'grey.700' }
+              '&:hover': { bgcolor: '#6e00ff' },
+              '&:active': { bgcolor: '#6e00ff' }
             }}
           >
             BACK TO REFACTORING
@@ -2702,10 +2877,13 @@ if __name__ == "__main__":
               variant="contained"
               startIcon={<CheckCircleIcon />}
               sx={{ 
-                bgcolor: 'success.main',
+                bgcolor: 'black',
                 color: 'white',
                 '&:hover': { 
-                  bgcolor: 'success.dark'
+                  bgcolor: '#6e00ff'
+                },
+                '&:active': { 
+                  bgcolor: '#6e00ff'
                 },
                 fontSize: '0.9rem',
                 fontWeight: 'bold',
@@ -2722,10 +2900,13 @@ if __name__ == "__main__":
               startIcon={<CheckCircleIcon />}
               disabled={!canShowMustOrganize()}
               sx={{ 
-                bgcolor: canShowMustOrganize() ? 'warning.main' : 'grey.400',
+                bgcolor: canShowMustOrganize() ? 'black' : 'grey.400',
                 color: 'white',
                 '&:hover': { 
-                  bgcolor: canShowMustOrganize() ? 'warning.dark' : 'grey.400' 
+                  bgcolor: canShowMustOrganize() ? '#6e00ff' : 'grey.400' 
+                },
+                '&:active': { 
+                  bgcolor: canShowMustOrganize() ? '#6e00ff' : 'grey.400' 
                 },
                 fontSize: '0.9rem',
                 fontWeight: 'bold',
@@ -2751,7 +2932,7 @@ if __name__ == "__main__":
           fullWidth
         >
           <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold' }}>
-            Organization Required
+            Action Required
           </DialogTitle>
           <DialogContent>
             <Typography variant="body1" sx={{ mt: 1 }}>
@@ -2762,9 +2943,14 @@ if __name__ == "__main__":
             <Button 
               onClick={() => setErrorDialog({ open: false, message: '' })}
               variant="contained"
-              color="primary"
+              sx={{
+                bgcolor: 'black',
+                color: 'white',
+                '&:hover': { bgcolor: '#6e00ff' },
+                '&:active': { bgcolor: '#6e00ff' }
+              }}
             >
-              OK, I&apos;ll organize them
+              OK, I understand
             </Button>
           </DialogActions>
         </Dialog>
@@ -2821,8 +3007,27 @@ if __name__ == "__main__":
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setNewFolderDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreateFolder} variant="contained">
+            <Button 
+              onClick={() => setNewFolderDialog(false)}
+              sx={{
+                bgcolor: 'black',
+                color: 'white',
+                '&:hover': { bgcolor: '#6e00ff' },
+                '&:active': { bgcolor: '#6e00ff' }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateFolder} 
+              variant="contained"
+              sx={{
+                bgcolor: 'black',
+                color: 'white',
+                '&:hover': { bgcolor: '#6e00ff' },
+                '&:active': { bgcolor: '#6e00ff' }
+              }}
+            >
               Create
             </Button>
           </DialogActions>
@@ -2837,8 +3042,7 @@ if __name__ == "__main__":
       {/* Header */}
       <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'grey.300' }}>
         <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
-          {'{Activity Title}'}
-        </Typography>
+Codebase Organization        </Typography>
         <Typography variant="body2" color="text.secondary">
           The script below has grown too long for one file and could benefit from 
           refactoring. Use the interface below to sort its functions into files that fit 
@@ -2855,19 +3059,8 @@ if __name__ == "__main__":
             {/* Code Display Header with Controls */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem' }}>
-                Example Script: (69 lines of code, 110 lines total)
+                Example Script: ({isMounted ? `${lineCountInfo.codeLines} lines of code, ${lineCountInfo.totalLines} lines total` : 'Loading...'})
               </Typography>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                <Typography variant="caption" sx={{ color: '#8b5cf6', fontSize: '0.7rem' }}>
-                  Group 1
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#48bb78', fontSize: '0.7rem' }}>
-                  Group 2
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#ff9f40', fontSize: '0.7rem' }}>
-                  Group 3
-                </Typography>
-              </Box>
             </Box>
             
             {/* Font Size and Display Controls */}
@@ -2915,22 +3108,50 @@ if __name__ == "__main__":
                 textAlign: 'right',
                 flexShrink: 0
               }}>
-                {Array.from({length: 255}, (_, index) => (
-                  <div 
-                    key={index} 
-                    style={{ 
-                      lineHeight: '1.4',
-                      color: '#cbd5e0',
-                      minHeight: `${fontSize * 1.4}rem`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      padding: '1px 0'
-                    }}
-                  >
-                    {String(index + 1).padStart(3, '0')}
-                  </div>
-                ))}
+                {Array.from({length: 255}, (_, index) => {
+                  const codeLines = exampleCode.split('\n');
+                  const line = index < codeLines.length ? codeLines[index] : '';
+                  
+                  // Check if this line belongs to a moved function (same logic as code content)
+                  let isMovedFunction = false;
+                  const isMainBlock = line.includes('if __name__ == "__main__":') || 
+                                     (index > 0 && codeLines.slice(0, index).some(l => l.includes('if __name__ == "__main__":')));
+                  
+                  if (!isMainBlock) {
+                    for (const block of functionBlocks) {
+                      if (index >= block.startLine && index <= block.endLine) {
+                        if (movedFunctions.has(block.name)) {
+                          isMovedFunction = true;
+                          break;
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Don't render line numbers for moved functions
+                  if (isMovedFunction) {
+                    return null;
+                  }
+                  
+                  return (
+                    <div 
+                      key={index} 
+                      style={{ 
+                        lineHeight: '1.4',
+                        color: '#cbd5e0',
+                        minHeight: `${fontSize * 1.4}rem`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        padding: '1px 0',
+                        marginTop: index > 0 && functionBlocks.some(block => block.startLine === index) ? '12px' : '0',
+                        marginBottom: functionBlocks.some(block => block.endLine === index) ? '8px' : '0'
+                      }}
+                    >
+                      {String(index + 1).padStart(3, '0')}
+                    </div>
+                  );
+                })}
               </Box>
               
               {/* Code Content */}
@@ -2955,22 +3176,28 @@ if __name__ == "__main__":
                     let isFirstLineOfFunction = false;
                     let isMovedFunction = false;
                     
-                    // Find which function block this line belongs to
-                    for (const block of functionBlocks) {
-                      if (index >= block.startLine && index <= block.endLine) {
-                        if (movedFunctions.has(block.name)) {
-                          // This line belongs to a moved function
-                          isMovedFunction = true;
-                        } else {
-                          // Only show function if it hasn't been moved
-                          functionBlock = block;
-                          isFirstLineOfFunction = index === block.startLine;
+                    // Don't highlight lines after if __name__ == "__main__":
+                    const isMainBlock = line.includes('if __name__ == "__main__":') || 
+                                       (index > 0 && codeLines.slice(0, index).some(l => l.includes('if __name__ == "__main__":')));
+                    
+                    if (!isMainBlock) {
+                      // Find which function block this line belongs to
+                      for (const block of functionBlocks) {
+                        if (index >= block.startLine && index <= block.endLine) {
+                          if (movedFunctions.has(block.name)) {
+                            // This line belongs to a moved function
+                            isMovedFunction = true;
+                          } else {
+                            // Only show function if it hasn't been moved
+                            functionBlock = block;
+                            isFirstLineOfFunction = index === block.startLine;
+                          }
+                          break;
                         }
-                        break;
                       }
                     }
                     
-                    const backgroundColor = functionBlock ? `${functionBlock.color}25` : 'transparent';
+                    const backgroundColor = functionBlock ? `${functionBlock.color}40` : 'transparent';
                     const borderColor = functionBlock ? functionBlock.color : 'transparent';
                     
                     // Don't render lines that belong to moved functions
@@ -2978,8 +3205,15 @@ if __name__ == "__main__":
                       return null;
                     }
                     
+                    // Check if this is the last line of a function block
+                    const isLastLineOfFunction = functionBlock && index === functionBlock.endLine;
+                    
                     return (
-                      <div key={index} style={{ position: 'relative' }}>
+                      <div key={index} style={{ 
+                        position: 'relative',
+                        marginTop: isFirstLineOfFunction && functionBlock ? '12px' : '0',
+                        marginBottom: isLastLineOfFunction ? '8px' : '0'
+                      }}>
                         <div
                           style={{
                             backgroundColor: backgroundColor,
@@ -3003,7 +3237,7 @@ if __name__ == "__main__":
                                 right: '20px',
                                 top: '50%',
                                 transform: 'translateY(-50%)',
-                                color: 'white',
+                                color: '#000000', // Force black text for better contrast
                                 fontWeight: 'bold',
                                 fontSize: `${fontSize * 0.75}rem`,
                                 backgroundColor: functionBlock.color,
@@ -3034,9 +3268,9 @@ if __name__ == "__main__":
                                 e.target.style.transform = 'translateY(-50%) scale(1)';
                                 e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
                               }}
-                              title={`Drag ${functionBlock.name}() function`}
+                              title={`Drag ${functionBlock.name}${functionBlock.type === 'function' ? '() function' : ' import'}`}
                             >
-                              📦 {functionBlock.name}()
+                              {functionBlock.type === 'import' ? '📥' : '📦'} {functionBlock.name}{functionBlock.type === 'function' ? '()' : ''}
                             </span>
                           )}
                         </div>
@@ -3048,27 +3282,29 @@ if __name__ == "__main__":
             </Box>
 
             {/* Code Display Controls */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
-              <Button 
-                variant="contained" 
-                onClick={expandCodeHeight}
-                size="small"
-                sx={{ bgcolor: 'grey.700', '&:hover': { bgcolor: 'grey.600' } }}
-              >
-                Expand Height (+300px)
-              </Button>
-              <Button 
-                variant="outlined" 
-                onClick={resetCodeDisplay}
-                size="small"
-                sx={{ color: 'white', borderColor: 'white', '&:hover': { borderColor: 'grey.400' } }}
-              >
-                Reset View
-              </Button>
-              <Typography variant="caption" sx={{ color: 'white', alignSelf: 'center', ml: 2 }}>
-                Lines 1-69 contain code, lines 70-110 are empty
-              </Typography>
-            </Box>
+            {isMounted && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 2 }}>
+                <Button 
+                  variant="contained" 
+                  onClick={expandCodeHeight}
+                  size="small"
+                  sx={{ bgcolor: 'grey.700', '&:hover': { bgcolor: 'grey.600' } }}
+                >
+                  Expand Height (+300px)
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  onClick={resetCodeDisplay}
+                  size="small"
+                  sx={{ color: 'white', borderColor: 'white', '&:hover': { borderColor: 'grey.400' } }}
+                >
+                  Reset View
+                </Button>
+                <Typography variant="caption" sx={{ color: 'white', alignSelf: 'center', ml: 2 }}>
+                  {lineCountInfo.description}
+                </Typography>
+              </Box>
+            )}
           </Paper>
         </Box>
 
@@ -3077,84 +3313,94 @@ if __name__ == "__main__":
           <Box sx={{ position: 'relative', zIndex: 1, minWidth: 0, width: '100%', maxWidth: '100%' }}>
             {/* File Tabs */}
             <Box sx={{ mb: 3 }}>
-              <Tabs
-                value={selectedFile}
-                onChange={(e, newValue) => setSelectedFile(newValue)}
-                variant="scrollable"
-                scrollButtons="auto"
-              >
-                {files.map(file => (
-                  <Tab
-                    key={file.id}
-                    value={file.id}
-                    label={
-                      editingFile === file.id ? (
-                        <TextField
-                          value={editingName}
-                          onChange={handleNameChange}
-                          onKeyDown={(e) => {
-                            handleNameSubmit(e);
-                            handleNameCancel(e);
-                          }}
-                          onBlur={handleNameSubmit}
-                          autoFocus
-                          size="small"
-                          variant="standard"
-                          sx={{
-                            '& .MuiInputBase-input': {
-                              color: 'white',
-                              fontSize: '0.875rem',
-                              textAlign: 'center',
-                              minWidth: '60px'
-                            },
-                            '& .MuiInput-underline:before': {
-                              borderBottomColor: 'white'
-                            },
-                            '& .MuiInput-underline:hover:not(.Mui-disabled):before': {
-                              borderBottomColor: 'white'
-                            },
-                            '& .MuiInput-underline:after': {
-                              borderBottomColor: 'white'
-                            }
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      ) : (
-                        <span 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSingleClick(file.id, file.name.toLowerCase());
-                          }}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {file.name.toLowerCase()}
-                        </span>
-                      )
-                    }
-                    onDoubleClick={() => handleDoubleClick(file.id, file.name.toLowerCase())}
-                    sx={{
-                      bgcolor: `${file.color}.main`,
-                      color: 'white !important',
-                      opacity: selectedFile === file.id ? 1 : 0.7,
-                      mr: 1,
-                      borderRadius: '4px 4px 0 0',
-                      textTransform: 'lowercase',
-                      '&.Mui-selected': {
+              {isMounted && (
+                <Tabs
+                  value={selectedFile}
+                  onChange={(e, newValue) => setSelectedFile(newValue)}
+                  variant="scrollable"
+                  scrollButtons="auto"
+                >
+                  {files.map(file => (
+                    <Tab
+                      key={file.id}
+                      value={file.id}
+                      label={
+                        editingFile === file.id ? (
+                          <TextField
+                            value={editingName}
+                            onChange={handleNameChange}
+                            onKeyDown={(e) => {
+                              handleNameSubmit(e);
+                              handleNameCancel(e);
+                            }}
+                            onBlur={handleNameSubmit}
+                            autoFocus
+                            size="small"
+                            variant="standard"
+                            sx={{
+                              '& .MuiInputBase-input': {
+                                color: 'white',
+                                fontSize: '0.875rem',
+                                textAlign: 'center',
+                                minWidth: '60px'
+                              },
+                              '& .MuiInput-underline:before': {
+                                borderBottomColor: 'white'
+                              },
+                              '& .MuiInput-underline:hover:not(.Mui-disabled):before': {
+                                borderBottomColor: 'white'
+                              },
+                              '& .MuiInput-underline:after': {
+                                borderBottomColor: 'white'
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSingleClick(file.id, file.name.toLowerCase());
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            {file.name.toLowerCase()}
+                          </span>
+                        )
+                      }
+                      onDoubleClick={() => handleDoubleClick(file.id, file.name.toLowerCase())}
+                      sx={{
+                        bgcolor: `${file.color}.main`,
                         color: 'white !important',
-                      },
-                      cursor: editingFile === file.id ? 'text' : 'pointer'
-                    }}
-                  />
-                ))}
-              </Tabs>
-              <Button
-                onClick={addNewFile}
-                variant="contained"
-                startIcon={<AddIcon />}
-                sx={{ mt: 1, bgcolor: 'grey.600', '&:hover': { bgcolor: 'grey.700' } }}
-              >
-                NEW
-              </Button>
+                        opacity: selectedFile === file.id ? 1 : 0.7,
+                        mr: 1,
+                        borderRadius: '4px 4px 0 0',
+                        textTransform: 'lowercase',
+                        '&.Mui-selected': {
+                          color: 'white !important',
+                        },
+                        cursor: editingFile === file.id ? 'text' : 'pointer'
+                      }}
+                    />
+                  ))}
+                </Tabs>
+              )}
+              {isMounted && (
+                <Button
+                  onClick={addNewFile}
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  sx={{ 
+                    mt: 1, 
+                    bgcolor: 'black', 
+                    color: 'white',
+                    '&:hover': { bgcolor: '#6e00ff' },
+                    '&:active': { bgcolor: '#6e00ff' }
+                  }}
+                >
+                  NEW
+                </Button>
+              )}
             </Box>
 
             {/* File Content Area */}
@@ -3200,6 +3446,40 @@ if __name__ == "__main__":
                 pr: 2,
                 pl: 1
               }}>
+                {/* Display code for dropped imports */}
+                {files.find(f => f.id === selectedFile)?.imports?.map(importName => {
+                  const importCode = files.find(f => f.id === selectedFile)?.importsCode?.[importName];
+                  return (
+                    <Box key={importName} sx={{ mb: 3 }}>
+                      <Typography variant="h6" sx={{ mb: 1, color: 'secondary.main' }}>
+                        Import: {importName}
+                      </Typography>
+                      <Paper 
+                        elevation={1} 
+                        sx={{ 
+                          p: 2, 
+                          bgcolor: '#1a1a1a', 
+                          borderRadius: 1,
+                          border: '1px solid #333',
+                          maxHeight: 400,
+                          overflow: 'auto'
+                        }}
+                      >
+                        <pre style={{ 
+                          color: '#e2e8f0', 
+                          margin: 0, 
+                          whiteSpace: 'pre-wrap', 
+                          fontFamily: 'monospace',
+                          fontSize: '0.75rem',
+                          lineHeight: '1.4'
+                        }}>
+                          {importCode || `# Import: ${importName}`}
+                        </pre>
+                      </Paper>
+                    </Box>
+                  );
+                })}
+                
                 {/* Display code for dropped functions */}
                 {files.find(f => f.id === selectedFile)?.functions.map(functionName => {
                   const functionCode = files.find(f => f.id === selectedFile)?.functionsCode?.[functionName];
@@ -3287,46 +3567,87 @@ if __name__ == "__main__":
 
 
             {/* Control Buttons */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 3 }}>
-              <Button
-                onClick={() => deleteFile(selectedFile)}
-                variant="contained"
-                startIcon={<DeleteIcon />}
-                sx={{ bgcolor: 'grey.800', '&:hover': { bgcolor: 'grey.700' } }}
-              >
-                DELETE FILE
-              </Button>
-              
-              {/* Continue Button - appears when there are at least 2 files */}
-              {files.length >= 2 && (
+            {isMounted && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1, mb: 3 }}>
                 <Button
+                  onClick={() => deleteFile(selectedFile)}
                   variant="contained"
-                  size="large"
+                  startIcon={<DeleteIcon />}
                   sx={{ 
-                    bgcolor: 'primary.main', 
+                    bgcolor: 'black', 
                     color: 'white',
-                    px: 3,
-                    py: 1,
-                    fontSize: '1rem',
-                    fontWeight: 'bold',
-                    '&:hover': { 
-                      bgcolor: 'primary.dark' 
-                    },
-                    boxShadow: 2
-                  }}
-                  onClick={() => {
-                    // Store files for organization view
-                    localStorage.setItem('refactoredFiles', JSON.stringify(files));
-                    setCurrentView('organize');
+                    '&:hover': { bgcolor: '#6e00ff' },
+                    '&:active': { bgcolor: '#6e00ff' }
                   }}
                 >
-                  CONTINUE TO ORGANIZE
+                  DELETE FILE
                 </Button>
-              )}
-            </Box>
+                
+                {/* Continue Button - appears when there are at least 2 files */}
+                {files.length >= 2 && (
+                  <Button
+                    variant="contained"
+                    size="large"
+                    sx={{ 
+                      bgcolor: 'black', 
+                      color: 'white',
+                      px: 3,
+                      py: 1,
+                      fontSize: '1rem',
+                      fontWeight: 'bold',
+                      '&:hover': { 
+                        bgcolor: '#6e00ff' 
+                      },
+                      '&:active': { 
+                        bgcolor: '#6e00ff' 
+                      },
+                      boxShadow: 2
+                    }}
+                    onClick={() => {
+                      // Store files for organization view
+                      localStorage.setItem('refactoredFiles', JSON.stringify(files));
+                      setCurrentView('organize');
+                    }}
+                  >
+                    CONTINUE TO ORGANIZE
+                  </Button>
+                )}
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
+      
+      {/* Error Dialog */}
+      <Dialog 
+        open={errorDialog.open} 
+        onClose={() => setErrorDialog({ open: false, message: '' })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold' }}>
+          Action Required
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" sx={{ mt: 1 }}>
+            {errorDialog.message}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setErrorDialog({ open: false, message: '' })}
+            variant="contained"
+            sx={{
+              bgcolor: 'black',
+              color: 'white',
+              '&:hover': { bgcolor: '#6e00ff' },
+              '&:active': { bgcolor: '#6e00ff' }
+            }}
+          >
+            OK, I understand
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };
