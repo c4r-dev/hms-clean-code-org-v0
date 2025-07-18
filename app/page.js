@@ -650,8 +650,8 @@ const CodeRefactoringInterface = () => {
 
   // Import management state
   const [customImports, setCustomImports] = useState([
-    { id: 1, module: 'tifffile', items: 'imread', enabled: true },
-    { id: 2, module: '', items: '', enabled: true }
+    { id: 1, module: '', items: '' },
+    { id: 2, module: '', items: '' }
   ]);
   const [newImportModule, setNewImportModule] = useState('');
   const [newImportItems, setNewImportItems] = useState('');
@@ -871,10 +871,7 @@ const CodeRefactoringInterface = () => {
       const newMainContent = generateMainPyContentWithEditableLines();
       setMainPyContent(newMainContent);
       
-      // Auto-run validation after a short delay to give user feedback
-      setTimeout(() => {
-        validateImportsAndStructure();
-      }, 1000);
+             // Removed auto-validation - only validate when user clicks button
     }
   }, [currentView, customImports, files]);
 
@@ -1309,30 +1306,19 @@ if __name__ == "__main__":
 
   // Import management functions
   const addNewImport = () => {
-    if (newImportModule.trim() && newImportItems.trim()) {
-      const newImport = {
-        id: Date.now(),
-        module: newImportModule.trim(),
-        items: newImportItems.trim(),
-        enabled: true
-      };
-      setCustomImports(prev => [...prev, newImport]);
-      setNewImportModule('');
-      setNewImportItems('');
-    }
+    const newImport = {
+      id: Date.now(),
+      module: '',
+      items: ''
+    };
+    setCustomImports(prev => [...prev, newImport]);
   };
 
   const removeImport = (importId) => {
     setCustomImports(prev => prev.filter(imp => imp.id !== importId));
   };
 
-  const toggleImport = (importId) => {
-    setCustomImports(prev => 
-      prev.map(imp => 
-        imp.id === importId ? { ...imp, enabled: !imp.enabled } : imp
-      )
-    );
-  };
+
 
   const updateImport = (importId, field, value) => {
     setCustomImports(prev =>
@@ -1367,13 +1353,17 @@ if __name__ == "__main__":
       successes: []
     };
 
+    // Declare variables outside try block to avoid scope issues
+    let missingFiles = [];
+    let filesInFolders = [];
+
     try {
       // Get current file structure
       const fileStructureJson = exportFileStructure();
       const fileStructure = JSON.parse(fileStructureJson);
 
       // Find all files that are in folders (not in root, excluding main.py)
-      const filesInFolders = fileStructure.files.filter(file => 
+      filesInFolders = fileStructure.files.filter(file => 
         !file.isInRoot && file.fileId !== 'main' && file.folderName
       );
 
@@ -1387,7 +1377,7 @@ if __name__ == "__main__":
       // Get all imported file names from custom import statements
       const importedFiles = new Set();
       customImports
-        .filter(imp => imp.enabled && imp.module && imp.items)
+        .filter(imp => imp.module && imp.items) // Only check if both module and items are filled
         .filter(imp => !['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(imp.module))
         .forEach(imp => {
           // Split items by comma and clean up whitespace
@@ -1396,7 +1386,7 @@ if __name__ == "__main__":
         });
 
       // Check each file in folders
-      const missingFiles = [];
+      missingFiles = []; // Reset the array
       const accountedFiles = [];
 
       filesInFolders.forEach(file => {
@@ -1456,15 +1446,17 @@ if __name__ == "__main__":
       results.isValid = false;
     }
 
-    setValidationResults(results);
-    setShowValidation(true);
-    
-    // Auto-hide after 8 seconds if successful
-    if (results.isValid && results.errors.length === 0) {
-      setTimeout(() => {
-        setShowValidation(false);
-      }, 8000);
+    // Show simple popup alert instead of comprehensive messaging
+    if (results.isValid) {
+      alert('✅ Validation Passed! All files in folders are properly imported.');
+    } else {
+      const missingFilesList = missingFiles.map(file => `${file.fileName} (in ${file.folderName})`).join(', ');
+      alert(`❌ Validation Failed!\n\nThe following files are NOT imported:\n${missingFilesList}\n\nPlease add import statements for these files.`);
     }
+    
+    // Keep the detailed results for debugging (commented out for now)
+    // setValidationResults(results);
+    // setShowValidation(true);
     
     return results;
   };
@@ -1739,17 +1731,17 @@ if __name__ == "__main__":
                     Current Import Statements:
                   </Typography>
                   
-                  {customImports.map((imp, index) => (
-                    <Box key={imp.id} sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 1, 
-                      mb: 1,
-                      p: 1,
-                      bgcolor: imp.enabled ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-                      borderRadius: 1,
-                      border: imp.enabled ? '1px solid #2196F3' : '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
+                                     {customImports.map((imp, index) => (
+                     <Box key={imp.id} sx={{ 
+                       display: 'flex', 
+                       alignItems: 'center', 
+                       gap: 1, 
+                       mb: 1,
+                       p: 1,
+                       bgcolor: 'rgba(255, 255, 255, 0.1)',
+                       borderRadius: 1,
+                       border: '1px solid #2196F3'
+                     }}>
                       <Typography variant="body2" sx={{ color: 'white', minWidth: '40px' }}>
                         {index + 7}:
                       </Typography>
@@ -1802,17 +1794,7 @@ if __name__ == "__main__":
                         }}
                       />
                       
-                      <IconButton
-                        onClick={() => toggleImport(imp.id)}
-                        size="small"
-                        sx={{ 
-                          color: imp.enabled ? '#4CAF50' : '#9E9E9E',
-                          '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.1)' }
-                        }}
-                        title={imp.enabled ? 'Disable import' : 'Enable import'}
-                      >
-                        <CheckCircleIcon fontSize="small" />
-                      </IconButton>
+                      
                       
                       <IconButton
                         onClick={() => removeImport(imp.id)}
@@ -1941,6 +1923,8 @@ if __name__ == "__main__":
                               </Box>
                
                {/* Validation Results */}
+               {/* Comprehensive Validation Results - Commented out for simple alert approach */}
+               {/* 
                {showValidation && validationResults && (
                  <Box sx={{ 
                    p: 2, 
@@ -1972,11 +1956,11 @@ if __name__ == "__main__":
                    </Box>
                    
                    {/* Success Messages */}
-                   {validationResults.successes.length > 0 && (
+                   {/* {validationResults.successes.length > 0 && (
                      <Box sx={{ mb: 2 }}>
-                                               <Typography variant="subtitle2" sx={{ color: '#4CAF50', fontWeight: 'bold', mb: 1 }}>
-                          ✅ What&apos;s Working:
-                        </Typography>
+                       <Typography variant="subtitle2" sx={{ color: '#4CAF50', fontWeight: 'bold', mb: 1 }}>
+                         ✅ What&apos;s Working:
+                       </Typography>
                        {validationResults.successes.map((success, index) => (
                          <Typography key={index} variant="body2" sx={{ 
                            color: '#4CAF50', 
@@ -1988,10 +1972,10 @@ if __name__ == "__main__":
                          </Typography>
                        ))}
                      </Box>
-                   )}
+                   )} */}
                    
                    {/* Error Messages */}
-                   {validationResults.errors.length > 0 && (
+                   {/* {validationResults.errors.length > 0 && (
                      <Box sx={{ mb: 2 }}>
                        <Typography variant="subtitle2" sx={{ color: '#f44336', fontWeight: 'bold', mb: 1 }}>
                          ❌ Issues Found:
@@ -2007,10 +1991,10 @@ if __name__ == "__main__":
                          </Typography>
                        ))}
                      </Box>
-                   )}
+                   )} */}
                    
                    {/* Warning Messages */}
-                   {validationResults.warnings.length > 0 && (
+                   {/* {validationResults.warnings.length > 0 && (
                      <Box sx={{ mb: 2 }}>
                        <Typography variant="subtitle2" sx={{ color: '#FF9800', fontWeight: 'bold', mb: 1 }}>
                          ⚠️ Warnings:
@@ -2026,11 +2010,9 @@ if __name__ == "__main__":
                          </Typography>
                        ))}
                      </Box>
-                   )}
-                   
-                   
-                 </Box>
-               )}
+                   )} */}
+                 {/* </Box>
+               )} */}
                
                {/* Editable Lines Info Banner */}
               <Box sx={{ 
