@@ -12,6 +12,7 @@ const style = {
   transform: 'translate(-50%, -50%)',
   width: 350,
   minWidth: 'fit-content',
+  maxHeight: '70vh',
   bgcolor: '#6e00ff', // Changed background color to purple
   // border: '2px solid #000',
   border: 'none',
@@ -20,6 +21,7 @@ const style = {
   p: 4,
   color: 'white', // Changed text color to white for better contrast
   outline: 0,
+  overflow: 'auto',
 }
 
 export default function CustomModal({ isOpen, closeModal, hypothesis }) {
@@ -59,22 +61,35 @@ export default function CustomModal({ isOpen, closeModal, hypothesis }) {
             component="h2"
             sx={{ mb: 2 }}
           >
-            Card Sorting
+            Codebase Organization
           </Typography>
 
           <Typography
             id="modal-modal-title"
             variant="h6"
-            component="h2"
+            component="h3"
             sx={{ mb: 2 }}
           >
-            Each card represents a potential concern with a hypothetical fibromyalgia study. 
-            <br/>
-            You can click on each card to review the concern in greater detail. 
-
-            Drag cards to the bin that you think represents the best control approach. 
-            <br/> <br></br>
-            For example, if you think a given card is best addressed by adding a control group, you would drag it to the TEST bin, while a card that you would like to address by randomizing some element of the study would be dragged to the DISTRIBUTE bin.
+            <ul style={{ paddingLeft: '20px', lineHeight: '1.6' }}>
+              <li style={{ marginBottom: '12px' }}>
+                Remember the distinction between source and script: one is the &quot;lower&quot; code that accomplishes the details of computation, the other is the &quot;higher&quot; code that arranges the broader workflow. In this project, what&apos;s your source and what&apos;s your script?
+              </li>
+              <li style={{ marginBottom: '12px' }}>
+                Try to avoid overly nested directory structure unless absolutely necessary. Remember that the more nested your directory is, the more sub-indexing your script will need to do to access different paths.
+              </li>
+              <li style={{ marginBottom: '12px' }}>
+                Which files do you think need to be at the very top level of your project directory?
+              </li>
+              <li style={{ marginBottom: '12px' }}>
+                The place your file lives contextualizes its function. For example, a license file in the top level of the project directory will be assumed to describe the license for the entire project, but the license file in a folder that contains data could be interpreted to describe the license of just that data.
+              </li>
+              <li style={{ marginBottom: '12px' }}>
+                Think about the audience that is likely to look at your project directory. For this kind of script, that&apos;s probably going to be you or someone else in your lab who is interested in viewing microscopy images and their preprocessing parameters.
+              </li>
+              <li style={{ marginBottom: '12px' }}>
+                Consider the uses that each type of file in your project directory might have. It&apos;s a good idea to structure your directory such that you have one folder for each such component that a user or developer might need.
+              </li>
+            </ul>
           </Typography>
         </Box>
       </Modal>
