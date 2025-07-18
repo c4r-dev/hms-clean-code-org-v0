@@ -648,6 +648,18 @@ const CodeRefactoringInterface = () => {
   // Track if component is mounted to prevent hydration errors
   const [isMounted, setIsMounted] = useState(false);
 
+  // Import management state
+  const [customImports, setCustomImports] = useState([
+    { id: 1, module: 'tifffile', items: 'imread', enabled: true },
+    { id: 2, module: '', items: '', enabled: true }
+  ]);
+  const [newImportModule, setNewImportModule] = useState('');
+  const [newImportItems, setNewImportItems] = useState('');
+
+  // Validation state
+  const [validationResults, setValidationResults] = useState(null);
+  const [showValidation, setShowValidation] = useState(false);
+
   // All useEffect hooks must be at the top, before any conditional logic
   
   // Initialize editable lines
@@ -1467,12 +1479,9 @@ if __name__ == "__main__":
     // Add initial imports (lines 0-5)
     mainContent += lines.slice(0, 6).join('\n') + '\n';
     
-    // Add custom imports
-    customImports.forEach(imp => {
-      if (imp.enabled && imp.module && imp.items) {
-        mainContent += `from ${imp.module} import ${imp.items}\n`;
-      }
-    });
+    // Add editable lines 6-7 (existing import lines)
+    mainContent += (lines[6] || 'from tifffile import imread') + '\n';
+    mainContent += (lines[7] || ' ') + '\n';
     
     // Add editable blank lines for user to add custom imports
     mainContent += ' \n';
