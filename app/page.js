@@ -1330,7 +1330,7 @@ if __name__ == "__main__":
         results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} files are missing from import statements`);
       }
 
-      // Show which files need to be imported
+      // Show which files need to be imported and provide complete examples
       if (missingFiles.length > 0) {
         const filesByFolder = {};
         missingFiles.forEach(file => {
@@ -1340,8 +1340,24 @@ if __name__ == "__main__":
           filesByFolder[file.folderName].push(file.fileName.replace('.py', ''));
         });
 
+        results.errors.push(`\n📋 EXAMPLES OF VALID IMPORTS THAT WOULD PASS VALIDATION:`);
+        
+        // Get ALL files in folders (not just missing ones) to show complete examples
+        const allFilesByFolder = {};
+        filesInFolders.forEach(file => {
+          if (!allFilesByFolder[file.folderName]) {
+            allFilesByFolder[file.folderName] = [];
+          }
+          allFilesByFolder[file.folderName].push(file.fileName.replace('.py', ''));
+        });
+
+        Object.entries(allFilesByFolder).forEach(([folderName, fileNames]) => {
+          results.errors.push(`✅ from ${folderName} import ${fileNames.join(', ')}`);
+        });
+
+        results.errors.push(`\n🔧 IMMEDIATE FIXES NEEDED:`);
         Object.entries(filesByFolder).forEach(([folderName, fileNames]) => {
-          results.errors.push(`💡 Add: "from ${folderName} import ${fileNames.join(', ')}"`);
+          results.errors.push(`❌ Missing: "from ${folderName} import ${fileNames.join(', ')}"`);
         });
       }
 
