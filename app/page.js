@@ -104,6 +104,30 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
     return lines[lineNumber] && lines[lineNumber].includes('load_file(f"');
   };
 
+  const hasFilesArray = (lineNumber) => {
+    return lines[lineNumber] && lines[lineNumber].trim().startsWith('files = [');
+  };
+
+  const parseFilesArray = (line) => {
+    // Extract files from: files = ['file1', 'file2', 'file3']
+    const match = line.match(/files = \[(.*)\]/);
+    if (match) {
+      const arrayContent = match[1];
+      // Split by comma and clean up quotes and whitespace
+      const files = arrayContent.split(',').map(file => {
+        return file.trim().replace(/^['"]|['"]$/g, '');
+      });
+      return files;
+    }
+    return [];
+  };
+
+  const updateFilesArray = (line, newFiles) => {
+    // Convert back to the proper format
+    const quotedFiles = newFiles.map(file => `'${file}'`);
+    return line.replace(/files = \[.*\]/, `files = [${quotedFiles.join(', ')}]`);
+  };
+
   const getLoadFileSegment = (line) => {
     const match = line.match(/load_file\(f"([^"]*)"\)/);
     return match ? match[1] : '';
@@ -119,6 +143,82 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
   };
 
   const renderLineWithInlineEdit = (line, lineNumber) => {
+    // Handle files array editing
+    if (hasFilesArray(lineNumber) && isEditableLine(lineNumber)) {
+      const files = parseFilesArray(line);
+      const beforeArray = line.substring(0, line.indexOf('files = ['));
+      const afterArray = line.substring(line.indexOf(']') + 1);
+      
+      return (
+        <span>
+          {beforeArray}
+          <span style={{ color: '#e2e8f0' }}>files = [</span>
+          {files.map((filename, index) => (
+                         <span key={index}>
+               <span style={{ color: '#e2e8f0' }}>&apos;</span>
+               <span
+                style={{
+                  backgroundColor: 'rgba(33, 150, 243, 0.2)',
+                  color: '#2196F3',
+                  padding: '2px 4px',
+                  borderRadius: '3px',
+                  cursor: 'text',
+                  border: '2px solid rgba(33, 150, 243, 0.5)',
+                  display: 'inline-block',
+                  minWidth: '140px',
+                  maxWidth: '250px',
+                  margin: '0 1px'
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingSegment(`${lineNumber}-file-${index}`);
+                }}
+                title={`Click to edit filename ${index + 1}`}
+              >
+                {editingSegment === `${lineNumber}-file-${index}` ? (
+                  <input
+                    type="text"
+                    value={filename}
+                    onChange={(e) => {
+                      const newFiles = [...files];
+                      newFiles[index] = e.target.value;
+                      const updatedLine = updateFilesArray(line, newFiles);
+                      const updatedLines = [...lines];
+                      updatedLines[lineNumber] = updatedLine;
+                      onChange(updatedLines.join('\n'));
+                    }}
+                    onBlur={() => setEditingSegment(null)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === 'Escape') {
+                        setEditingSegment(null);
+                      }
+                    }}
+                    autoFocus
+                    style={{
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      outline: 'none',
+                      color: '#2196F3',
+                      fontFamily: 'monospace',
+                      fontSize: '0.8rem',
+                      width: '100%',
+                      minWidth: '140px'
+                    }}
+                  />
+                ) : (
+                  filename
+                )}
+                             </span>
+               <span style={{ color: '#e2e8f0' }}>&apos;</span>
+               {index < files.length - 1 && <span style={{ color: '#e2e8f0' }}>, </span>}
+            </span>
+          ))}
+          <span style={{ color: '#e2e8f0' }}>]</span>
+          {afterArray}
+        </span>
+      );
+    }
+    
     if (hasLoadFileCall(lineNumber) && isEditableLine(lineNumber)) {
       const beforeLoadFile = line.substring(0, line.indexOf('load_file(f"'));
       const afterLoadFile = line.substring(line.indexOf('")') + 2);
@@ -524,7 +624,8 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                 borderRadius: '2px',
                 position: 'relative',
                 cursor: isEditableLine(index) && !disabled ? 'text' : 'default',
-                border: isEditableLine(index) ? '1px solid rgba(255, 215, 0, 0.3)' : '1px solid transparent'
+                border: isEditableLine(index) ? '1px solid rgba(255, 215, 0, 0.3)' : '1px solid transparent',
+                whiteSpace: 'pre'
               }}
               onClick={() => handleLineClick(index)}
               onMouseEnter={() => setHoveredLine(index)}
@@ -546,7 +647,8 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                     color: '#e2e8f0',
                     fontFamily: 'monospace',
                     fontSize: '0.8rem',
-                    lineHeight: '1.4'
+                    lineHeight: '1.4',
+                    whiteSpace: 'pre'
                   }}
                 />
               ) : (
@@ -2024,10 +2126,11 @@ if __name__ == "__main__":
                 gap: 1
               }}>
                 <EditIcon sx={{ color: '#ffd700', fontSize: '1.2rem' }} />
-                <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold' }}>
-                  💡 Additional editable sections:<br />
-                  • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
-                </Typography>
+                                 <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold' }}>
+                   💡 Additional editable sections:<br />
+                   • Files array: Click the blue highlighted filenames to edit them<br />
+                   • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
+                 </Typography>
               </Box>
 
               {/* Enhanced Code Editor */}
@@ -2039,6 +2142,14 @@ if __name__ == "__main__":
                   editableLines={(() => {
                     const lines = mainPyContent.split('\n');
                     const editableIndexes = [];
+                    
+                    // Find line with files array
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].trim().startsWith('files = [')) {
+                        editableIndexes.push(i);
+                        break;
+                      }
+                    }
                     
                     // Find line with load_file call containing {filename}
                     for (let i = 0; i < lines.length; i++) {
@@ -2086,6 +2197,7 @@ if __name__ == "__main__":
               <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
                 Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
                 The Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
+                The files array allows students to edit the three filenames by clicking on the blue highlighted areas.
                 The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
                 Students can enable/disable imports and see real-time updates in the code editor.
                 The validation system checks that import statements correctly match the organized file structure.
