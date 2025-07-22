@@ -1677,11 +1677,14 @@ if __name__ == "__main__":
     mainContent += (lines[6] || 'from tifffile import imread') + '\n';
     mainContent += (lines[7] || ' ') + '\n';
     
-    // Add editable blank lines for user to add custom imports
-    mainContent += ' \n';
-    mainContent += ' \n';
+    // Add custom imports from the Import Manager
+    customImports.forEach(imp => {
+      if (imp.module.trim() && imp.items.trim()) {
+        mainContent += `from ${imp.module} import ${imp.items}\n`;
+      }
+    });
     
-    // Don't add automatic import statements - users will add them manually
+    // Add a blank line after custom imports
     mainContent += '\n';
     
     // Define code block ranges based on current highlighting (adjusted for new lines)
