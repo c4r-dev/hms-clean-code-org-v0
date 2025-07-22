@@ -63,6 +63,21 @@ const PythonFileIcon = () => (
   </Box>
 );
 
+// Helper function to parse files array from code line
+const parseFilesArray = (line) => {
+  // Extract files from: files = ['file1', 'file2', 'file3']
+  const match = line.match(/files = \[(.*)\]/);
+  if (match) {
+    const arrayContent = match[1];
+    // Split by comma and clean up quotes and whitespace
+    const files = arrayContent.split(',').map(file => {
+      return file.trim().replace(/^['"]|['"]$/g, '');
+    });
+    return files;
+  }
+  return [];
+};
+
 // Enhanced code editor component with inline editing
 const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
   const [hoveredLine, setHoveredLine] = useState(null);
@@ -106,20 +121,6 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
 
   const hasFilesArray = (lineNumber) => {
     return lines[lineNumber] && lines[lineNumber].trim().startsWith('files = [');
-  };
-
-  const parseFilesArray = (line) => {
-    // Extract files from: files = ['file1', 'file2', 'file3']
-    const match = line.match(/files = \[(.*)\]/);
-    if (match) {
-      const arrayContent = match[1];
-      // Split by comma and clean up quotes and whitespace
-      const files = arrayContent.split(',').map(file => {
-        return file.trim().replace(/^['"]|['"]$/g, '');
-      });
-      return files;
-    }
-    return [];
   };
 
   const updateFilesArray = (line, newFiles) => {
@@ -1565,13 +1566,16 @@ if __name__ == "__main__":
       const fileStructureJson = exportFileStructure();
       const fileStructure = JSON.parse(fileStructureJson);
 
-      // Find all files that are in folders (not in root, excluding main.py)
+      // Find all files that are in folders (not in root, excluding main.py and data files)
+      // Data files are validated separately via path prefix/filename validation
+      const dataFileIds = ['nd2_tail', 'tif_vang', 'nwb_sub11'];
       filesInFolders = fileStructure.files.filter(file => 
-        !file.isInRoot && file.fileId !== 'main' && file.folderName
+        !file.isInRoot && file.fileId !== 'main' && file.folderName && !dataFileIds.includes(file.fileId)
       );
 
       if (filesInFolders.length === 0) {
-        results.warnings.push('No files have been organized into folders yet.');
+        results.warnings.push('No Python files have been organized into folders yet.');
+        results.warnings.push('Note: Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.');
         setValidationResults(results);
         setShowValidation(true);
         return results;
@@ -1608,9 +1612,11 @@ if __name__ == "__main__":
 
       // Summary messages
       if (results.isValid) {
-        results.successes.push(`🎉 All ${filesInFolders.length} files in folders are properly imported!`);
+        results.successes.push(`🎉 All ${filesInFolders.length} Python files in folders are properly imported!`);
+        results.successes.push(`📁 Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
       } else {
-        results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} files are missing from import statements`);
+        results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} Python files are missing from import statements`);
+        results.errors.push(`📁 Note: Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
       }
 
       // Show which files need to be imported and provide complete examples
@@ -1933,7 +1939,7 @@ if __name__ == "__main__":
                 {/* Current Imports */}
                 <Box sx={{ mb: 1.5 }}>
                   <Typography variant="body2" sx={{ color: '#2196F3', mb: 1, fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Current Import Statements:
+                    Current Import Statements (for Python files):
                   </Typography>
                   
                                      {customImports.map((imp, index) => (
@@ -2115,7 +2121,7 @@ if __name__ == "__main__":
                    borderTop: '1px solid rgba(255, 255, 255, 0.2)'
                  }}>
                    <Typography variant="body2" sx={{ color: '#2196F3', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                     🔍 Validate Import Structure
+                     🔍 Validate Imports & File Paths
                    </Typography>
                    
                    <Button
@@ -2130,9 +2136,9 @@ if __name__ == "__main__":
                        height: '32px',
                        '&:hover': { bgcolor: '#F57C00' }
                      }}
-                   >
-                     VALIDATE IMPORTS & STRUCTURE
-                   </Button>
+                                        >
+                       VALIDATE IMPORTS & FILE PATHS
+                     </Button>
                  </Box>
                               </Box>
                
@@ -2326,11 +2332,11 @@ if __name__ == "__main__":
             <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
               <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
                 Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
-                The compact Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
-                The files array allows students to edit the three filenames by clicking on the blue highlighted areas.
+                The compact Import Manager allows students to dynamically add, remove, and edit import statements for Python files. 
+                The files array allows students to edit the three data filenames by clicking on the blue highlighted areas.
                 The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
-                The validation system checks that import statements correctly match the organized file structure.
-                Advanced validation also ensures data file paths are consistent with their folder organization.
+                The validation system checks that Python files have correct import statements, while data files (.nd2, .nwb, .tif) are validated through correct path prefix/filename usage in the code.
+                Advanced validation ensures data file paths are consistent with their folder organization.
                 Validation issues can be expanded/collapsed by clicking the arrow button for detailed error messages.
                 The NEXT button is disabled until all validation issues are resolved.
               </Typography>
