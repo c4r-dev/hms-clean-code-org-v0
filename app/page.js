@@ -1493,38 +1493,72 @@ if __name__ == "__main__":
         codeFilenames = parseFilesArray(filesArrayLine);
       }
 
-      // Check if all data files are in the same folder
+      // Check folder organization
       const dataFileFolders = dataFiles.map(f => f.folderName).filter(Boolean);
       const uniqueFolders = [...new Set(dataFileFolders)];
       
+      // Normalize path prefix (handle variations like 'folderName/', 'folderName//', 'folderName /', etc.)
+      const normalizedPathPrefix = pathPrefix.trim().replace(/\s*\/+\s*$/, '') + (pathPrefix.trim() ? '/' : '');
+      
+      // Check if filenames have folder prefixes
+      const filenamesWithPaths = codeFilenames.filter(filename => filename.includes('/'));
+      const filenamesWithoutPaths = codeFilenames.filter(filename => !filename.includes('/'));
+      
       if (uniqueFolders.length === 0) {
-        // All data files in root - should have no path prefix and simple filenames
-        if (pathPrefix !== '') {
+        // All data files in root directory
+        if (pathPrefix.trim() !== '') {
           validation.isValid = false;
           validation.errors.push('Data files are in root directory. Path prefix should be empty.');
         }
-      } else if (uniqueFolders.length === 1) {
-        // All data files in same folder - should use path prefix
-        const expectedPrefix = `${uniqueFolders[0]}/`;
-        if (pathPrefix !== expectedPrefix) {
+        if (filenamesWithPaths.length > 0) {
           validation.isValid = false;
-          validation.errors.push(`All data files are in "${uniqueFolders[0]}" folder. Path prefix should be "${expectedPrefix}".`);
+          validation.errors.push('Data files are in root directory. Filenames should not include folder paths.');
         }
+      } else if (uniqueFolders.length === 1) {
+        // All data files in the SAME folder - two valid approaches
+        const folderName = uniqueFolders[0];
+        const expectedPrefix = `${folderName}/`;
         
-        // Check filenames don't include folder paths
-        const hasPathsInFilenames = codeFilenames.some(filename => filename.includes('/'));
-        if (hasPathsInFilenames) {
+        // Check if using mixed approaches (both path prefix AND individual file paths)
+        const hasPathPrefix = pathPrefix.trim() !== '';
+        const hasIndividualPaths = filenamesWithPaths.length > 0;
+        
+        if (hasPathPrefix && hasIndividualPaths) {
           validation.isValid = false;
-          validation.errors.push('When using path prefix, filenames should not include folder paths.');
+          validation.errors.push('Cannot mix path prefix and individual file paths. Choose one approach: either use path prefix OR add folder paths to individual filenames.');
+        } else if (hasPathPrefix) {
+          // Approach A: Using path prefix
+          if (normalizedPathPrefix !== expectedPrefix) {
+            validation.isValid = false;
+            validation.errors.push(`Using path prefix approach. Path prefix should be "${expectedPrefix}" (variations like "${folderName}//", "${folderName} /" are also acceptable).`);
+          }
+          // All filenames should be simple (no folder paths)
+          if (filenamesWithPaths.length > 0) {
+            validation.isValid = false;
+            validation.errors.push('When using path prefix approach, filenames should not include folder paths.');
+          }
+        } else if (hasIndividualPaths) {
+          // Approach B: Using individual file paths
+          dataFiles.forEach(dataFile => {
+            const expectedFilename = `${dataFile.folderName}/${dataFile.fileName}`;
+            if (!codeFilenames.includes(expectedFilename)) {
+              validation.isValid = false;
+              validation.errors.push(`Using individual paths approach. File "${dataFile.fileName}" should be "${expectedFilename}" in the files array.`);
+            }
+          });
+        } else {
+          // Neither approach is being used properly
+          validation.isValid = false;
+          validation.errors.push(`All data files are in "${folderName}" folder. Choose one approach: either fill path prefix with "${expectedPrefix}" OR add "${folderName}/" before each filename.`);
         }
       } else {
-        // Data files in different folders - should have empty path prefix and full paths in filenames
-        if (pathPrefix !== '') {
+        // Data files in DIFFERENT folders - must use individual paths approach
+        if (pathPrefix.trim() !== '') {
           validation.isValid = false;
-          validation.errors.push('Data files are in different folders. Path prefix should be empty and full paths should be in filenames.');
+          validation.errors.push('Data files are in different folders. Path prefix should be empty and folder paths should be added to individual filenames.');
         }
         
-        // Check that each filename includes its correct folder path
+        // All filenames should include their folder paths
         dataFiles.forEach(dataFile => {
           const expectedFilename = dataFile.folderName ? `${dataFile.folderName}/${dataFile.fileName}` : dataFile.fileName;
           if (!codeFilenames.includes(expectedFilename)) {
