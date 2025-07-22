@@ -1497,12 +1497,18 @@ if __name__ == "__main__":
       const dataFileFolders = dataFiles.map(f => f.folderName).filter(Boolean);
       const uniqueFolders = [...new Set(dataFileFolders)];
       
-      // Normalize path prefix (handle variations like 'folderName/', 'folderName//', 'folderName /', etc.)
-      const normalizedPathPrefix = pathPrefix.trim().replace(/\s*\/+\s*$/, '') + (pathPrefix.trim() ? '/' : '');
+      // Check if path prefix contains valid path separator patterns
+      // Valid: /, //, \, \\, with optional spaces around them
+      // Invalid: ///, \\\, or more than 2 slashes
+      const validPathSeparatorPattern = /\s*[\/\\]{1,2}\s*$/;
+      const hasValidPathSeparator = validPathSeparatorPattern.test(pathPrefix);
+      const normalizedPathPrefix = hasValidPathSeparator 
+        ? pathPrefix.trim().replace(/\s*[\/\\]+\s*$/, '') + '/'
+        : pathPrefix.trim();
       
-      // Check if filenames have folder prefixes
-      const filenamesWithPaths = codeFilenames.filter(filename => filename.includes('/'));
-      const filenamesWithoutPaths = codeFilenames.filter(filename => !filename.includes('/'));
+      // Check if filenames have folder prefixes (both forward slashes and backslashes)
+      const filenamesWithPaths = codeFilenames.filter(filename => filename.includes('/') || filename.includes('\\'));
+      const filenamesWithoutPaths = codeFilenames.filter(filename => !filename.includes('/') && !filename.includes('\\'));
       
       if (uniqueFolders.length === 0) {
         // All data files in root directory
@@ -1520,17 +1526,28 @@ if __name__ == "__main__":
         const expectedPrefix = `${folderName}/`;
         
         // Check if using mixed approaches (both path prefix AND individual file paths)
-        const hasPathPrefix = pathPrefix.trim() !== '';
+        const hasValidPathPrefix = pathPrefix.trim() !== '' && hasValidPathSeparator;
         const hasIndividualPaths = filenamesWithPaths.length > 0;
         
-        if (hasPathPrefix && hasIndividualPaths) {
+        // Check for invalid path separator patterns (3+ slashes)
+        const hasInvalidSlashes = /[\/\\]{3,}/.test(pathPrefix);
+        
+        if (hasValidPathPrefix && hasIndividualPaths) {
           validation.isValid = false;
           validation.errors.push('Cannot mix path prefix and individual file paths. Choose one approach: either use path prefix OR add folder paths to individual filenames.');
-        } else if (hasPathPrefix) {
+        } else if (hasInvalidSlashes) {
+          // User typed too many slashes
+          validation.isValid = false;
+          validation.errors.push(`Path prefix "${pathPrefix.trim()}" has too many slashes. Use single (/) or double (//) slashes only.`);
+        } else if (pathPrefix.trim() !== '' && !hasValidPathSeparator) {
+          // User typed folder name but forgot the path separator OR used invalid pattern
+          validation.isValid = false;
+          validation.errors.push(`Path prefix "${pathPrefix.trim()}" is missing a valid path separator. Use "${pathPrefix.trim()}/" or "${pathPrefix.trim()}\\" to indicate it's a folder path.`);
+        } else if (hasValidPathPrefix) {
           // Approach A: Using path prefix
           if (normalizedPathPrefix !== expectedPrefix) {
             validation.isValid = false;
-            validation.errors.push(`Using path prefix approach. Path prefix should be "${expectedPrefix}" (variations like "${folderName}//", "${folderName} /" are also acceptable).`);
+            validation.errors.push(`Using path prefix approach. Path prefix should be "${expectedPrefix}" (variations like "${folderName}//", "${folderName} /", "${folderName}\\", "${folderName} \\" are also acceptable).`);
           }
           // All filenames should be simple (no folder paths)
           if (filenamesWithPaths.length > 0) {
@@ -1540,16 +1557,17 @@ if __name__ == "__main__":
         } else if (hasIndividualPaths) {
           // Approach B: Using individual file paths
           dataFiles.forEach(dataFile => {
-            const expectedFilename = `${dataFile.folderName}/${dataFile.fileName}`;
-            if (!codeFilenames.includes(expectedFilename)) {
+            const expectedFilenameForward = `${dataFile.folderName}/${dataFile.fileName}`;
+            const expectedFilenameBack = `${dataFile.folderName}\\${dataFile.fileName}`;
+            if (!codeFilenames.includes(expectedFilenameForward) && !codeFilenames.includes(expectedFilenameBack)) {
               validation.isValid = false;
-              validation.errors.push(`Using individual paths approach. File "${dataFile.fileName}" should be "${expectedFilename}" in the files array.`);
+              validation.errors.push(`Using individual paths approach. File "${dataFile.fileName}" should be "${expectedFilenameForward}" (or "${expectedFilenameBack}") in the files array.`);
             }
           });
-        } else {
-          // Neither approach is being used properly
+        } else if (!hasIndividualPaths && pathPrefix.trim() === '') {
+          // Neither approach is being used
           validation.isValid = false;
-          validation.errors.push(`All data files are in "${folderName}" folder. Choose one approach: either fill path prefix with "${expectedPrefix}" OR add "${folderName}/" before each filename.`);
+          validation.errors.push(`All data files are in "${folderName}" folder. Choose one approach: either fill path prefix with "${expectedPrefix}" OR add "${folderName}/" (or "${folderName}\\") before each filename.`);
         }
       } else {
         // Data files in DIFFERENT folders - must use individual paths approach
@@ -1560,10 +1578,19 @@ if __name__ == "__main__":
         
         // All filenames should include their folder paths
         dataFiles.forEach(dataFile => {
-          const expectedFilename = dataFile.folderName ? `${dataFile.folderName}/${dataFile.fileName}` : dataFile.fileName;
-          if (!codeFilenames.includes(expectedFilename)) {
-            validation.isValid = false;
-            validation.errors.push(`File "${dataFile.fileName}" should be "${expectedFilename}" in the files array.`);
+          if (dataFile.folderName) {
+            const expectedFilenameForward = `${dataFile.folderName}/${dataFile.fileName}`;
+            const expectedFilenameBack = `${dataFile.folderName}\\${dataFile.fileName}`;
+            if (!codeFilenames.includes(expectedFilenameForward) && !codeFilenames.includes(expectedFilenameBack)) {
+              validation.isValid = false;
+              validation.errors.push(`File "${dataFile.fileName}" should be "${expectedFilenameForward}" (or "${expectedFilenameBack}") in the files array.`);
+            }
+          } else {
+            // File in root
+            if (!codeFilenames.includes(dataFile.fileName)) {
+              validation.isValid = false;
+              validation.errors.push(`File "${dataFile.fileName}" should be "${dataFile.fileName}" in the files array.`);
+            }
           }
         });
       }
