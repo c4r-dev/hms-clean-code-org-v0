@@ -761,6 +761,7 @@ const CodeRefactoringInterface = () => {
   // Validation state
   const [validationResults, setValidationResults] = useState(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [expandedValidation, setExpandedValidation] = useState(false);
 
   // All useEffect hooks must be at the top, before any conditional logic
   
@@ -973,7 +974,10 @@ const CodeRefactoringInterface = () => {
       const newMainContent = generateMainPyContentWithEditableLines();
       setMainPyContent(newMainContent);
       
-             // Removed auto-validation - only validate when user clicks button
+             // Auto-run validation after a delay to provide immediate feedback
+       setTimeout(() => {
+         validateImportsAndStructure();
+       }, 1500);
     }
   }, [currentView, customImports, files]);
 
@@ -1446,6 +1450,96 @@ if __name__ == "__main__":
     return JSON.stringify(structure, null, 2);
   };
 
+  // Data file path validation function
+  const validateDataFilePaths = () => {
+    const validation = {
+      isValid: true,
+      errors: []
+    };
+
+    try {
+      // Get current file structure
+      const fileStructureJson = exportFileStructure();
+      const fileStructure = JSON.parse(fileStructureJson);
+
+      // Find the 3 data files in the organization
+      const dataFileIds = ['nd2_tail', 'tif_vang', 'nwb_sub11'];
+      const dataFiles = dataFileIds.map(id => 
+        fileStructure.files.find(f => f.fileId === id)
+      ).filter(Boolean);
+
+      if (dataFiles.length === 0) {
+        // No data files found, skip validation
+        return validation;
+      }
+
+      // Extract current values from main.py code
+      const lines = mainPyContent.split('\n');
+      
+      // Find path prefix from load_file line
+      let pathPrefix = '';
+      const loadFileLine = lines.find(line => line.includes('load_file(f"') && line.includes('{filename}'));
+      if (loadFileLine) {
+        const match = loadFileLine.match(/load_file\(f"([^"]*)\{filename\}"\)/);
+        pathPrefix = match ? match[1] : '';
+      }
+
+      // Find filenames from files array
+      let codeFilenames = [];
+      const filesArrayLine = lines.find(line => line.trim().startsWith('files = ['));
+      if (filesArrayLine) {
+        codeFilenames = parseFilesArray(filesArrayLine);
+      }
+
+      // Check if all data files are in the same folder
+      const dataFileFolders = dataFiles.map(f => f.folderName).filter(Boolean);
+      const uniqueFolders = [...new Set(dataFileFolders)];
+      
+      if (uniqueFolders.length === 0) {
+        // All data files in root - should have no path prefix and simple filenames
+        if (pathPrefix !== '') {
+          validation.isValid = false;
+          validation.errors.push('Data files are in root directory. Path prefix should be empty.');
+        }
+      } else if (uniqueFolders.length === 1) {
+        // All data files in same folder - should use path prefix
+        const expectedPrefix = `${uniqueFolders[0]}/`;
+        if (pathPrefix !== expectedPrefix) {
+          validation.isValid = false;
+          validation.errors.push(`All data files are in "${uniqueFolders[0]}" folder. Path prefix should be "${expectedPrefix}".`);
+        }
+        
+        // Check filenames don't include folder paths
+        const hasPathsInFilenames = codeFilenames.some(filename => filename.includes('/'));
+        if (hasPathsInFilenames) {
+          validation.isValid = false;
+          validation.errors.push('When using path prefix, filenames should not include folder paths.');
+        }
+      } else {
+        // Data files in different folders - should have empty path prefix and full paths in filenames
+        if (pathPrefix !== '') {
+          validation.isValid = false;
+          validation.errors.push('Data files are in different folders. Path prefix should be empty and full paths should be in filenames.');
+        }
+        
+        // Check that each filename includes its correct folder path
+        dataFiles.forEach(dataFile => {
+          const expectedFilename = dataFile.folderName ? `${dataFile.folderName}/${dataFile.fileName}` : dataFile.fileName;
+          if (!codeFilenames.includes(expectedFilename)) {
+            validation.isValid = false;
+            validation.errors.push(`File "${dataFile.fileName}" should be "${expectedFilename}" in the files array.`);
+          }
+        });
+      }
+
+    } catch (error) {
+      validation.isValid = false;
+      validation.errors.push(`Data file validation error: ${error.message}`);
+    }
+
+    return validation;
+  };
+
   // File-focused validation function
   const validateImportsAndStructure = () => {
     const results = {
@@ -1460,6 +1554,12 @@ if __name__ == "__main__":
     let filesInFolders = [];
 
     try {
+      // First, validate data file paths consistency
+      const dataFileValidation = validateDataFilePaths();
+      if (!dataFileValidation.isValid) {
+        results.isValid = false;
+        results.errors.push(...dataFileValidation.errors);
+      }
       // Get current file structure
       const fileStructureJson = exportFileStructure();
       const fileStructure = JSON.parse(fileStructureJson);
@@ -1548,17 +1648,16 @@ if __name__ == "__main__":
       results.isValid = false;
     }
 
-    // Show simple popup alert instead of comprehensive messaging
-    if (results.isValid) {
-      alert('✅ Validation Passed! All files in folders are properly imported.');
-    } else {
-      const missingFilesList = missingFiles.map(file => `${file.fileName} (in ${file.folderName})`).join(', ');
-      alert(`❌ Validation Failed!\n\nThe following files are NOT imported:\n${missingFilesList}\n\nPlease add import statements for these files.`);
-    }
+    // Show compact validation results instead of alert
+    setValidationResults(results);
+    setShowValidation(true);
     
-    // Keep the detailed results for debugging (commented out for now)
-    // setValidationResults(results);
-    // setShowValidation(true);
+    // Auto-hide successful validation after 5 seconds
+    if (results.isValid && results.errors.length === 0) {
+      setTimeout(() => {
+        setShowValidation(false);
+      }, 5000);
+    }
     
     return results;
   };
@@ -1818,18 +1917,18 @@ if __name__ == "__main__":
               
               {/* Import Manager Section */}
               <Box sx={{ 
-                p: 2, 
+                p: 1.5, 
                 bgcolor: 'rgba(33, 150, 243, 0.1)', 
-                borderLeft: '4px solid #2196F3',
-                mb: 2
+                borderLeft: '3px solid #2196F3',
+                mb: 1.5
               }}>
-                <Typography variant="h6" sx={{ color: '#2196F3', fontWeight: 'bold', mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ color: '#2196F3', fontWeight: 'bold', mb: 1.5, fontSize: '0.95rem' }}>
                   📦 Import Manager
                 </Typography>
                 
                 {/* Current Imports */}
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" sx={{ color: '#2196F3', mb: 1 }}>
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ color: '#2196F3', mb: 1, fontSize: '0.85rem', fontWeight: 'bold' }}>
                     Current Import Statements:
                   </Typography>
                   
@@ -1837,18 +1936,18 @@ if __name__ == "__main__":
                      <Box key={imp.id} sx={{ 
                        display: 'flex', 
                        alignItems: 'center', 
-                       gap: 1, 
-                       mb: 1,
-                       p: 1,
+                       gap: 0.8, 
+                       mb: 0.8,
+                       p: 0.8,
                        bgcolor: 'rgba(255, 255, 255, 0.1)',
-                       borderRadius: 1,
+                       borderRadius: 0.5,
                        border: '1px solid #2196F3'
                      }}>
-                      <Typography variant="body2" sx={{ color: 'white', minWidth: '40px' }}>
+                      <Typography variant="body2" sx={{ color: 'white', minWidth: '30px', fontSize: '0.8rem' }}>
                         {index + 7}:
                       </Typography>
                       
-                      <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                      <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
                         from
                       </Typography>
                       
@@ -1859,20 +1958,21 @@ if __name__ == "__main__":
                         size="small"
                         variant="outlined"
                         sx={{
-                          minWidth: '120px',
+                          minWidth: '100px',
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(255, 255, 255, 0.1)',
                             color: '#ffd700',
-                            fontSize: '0.8rem',
+                            fontSize: '0.75rem',
+                            height: '32px',
                             '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
                             '&:hover fieldset': { borderColor: '#ffd700' },
                             '&.Mui-focused fieldset': { borderColor: '#ffd700' }
                           },
-                          '& .MuiInputBase-input': { color: '#ffd700' }
+                          '& .MuiInputBase-input': { color: '#ffd700', padding: '6px 8px' }
                         }}
                       />
                       
-                      <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                      <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
                         import
                       </Typography>
                       
@@ -1883,16 +1983,17 @@ if __name__ == "__main__":
                         size="small"
                         variant="outlined"
                         sx={{
-                          minWidth: '160px',
+                          minWidth: '140px',
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(255, 255, 255, 0.1)',
                             color: '#ffd700',
-                            fontSize: '0.8rem',
+                            fontSize: '0.75rem',
+                            height: '32px',
                             '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
                             '&:hover fieldset': { borderColor: '#ffd700' },
                             '&.Mui-focused fieldset': { borderColor: '#ffd700' }
                           },
-                          '& .MuiInputBase-input': { color: '#ffd700' }
+                          '& .MuiInputBase-input': { color: '#ffd700', padding: '6px 8px' }
                         }}
                       />
                       
@@ -1917,17 +2018,17 @@ if __name__ == "__main__":
                 <Box sx={{ 
                   display: 'flex', 
                   alignItems: 'center', 
-                  gap: 1,
-                  p: 2,
+                  gap: 0.8,
+                  p: 1.2,
                   bgcolor: 'rgba(76, 175, 80, 0.1)',
-                  borderRadius: 1,
+                  borderRadius: 0.5,
                   border: '1px dashed #4CAF50'
                 }}>
-                  <Typography variant="body2" sx={{ color: '#4CAF50', fontWeight: 'bold' }}>
+                  <Typography variant="body2" sx={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '0.8rem' }}>
                     Add:
                   </Typography>
                   
-                  <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                  <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
                     from
                   </Typography>
                   
@@ -1938,20 +2039,21 @@ if __name__ == "__main__":
                     size="small"
                     variant="outlined"
                     sx={{
-                      minWidth: '120px',
+                      minWidth: '100px',
                       '& .MuiOutlinedInput-root': {
                         bgcolor: 'rgba(255, 255, 255, 0.1)',
                         color: '#4CAF50',
-                        fontSize: '0.8rem',
+                        fontSize: '0.75rem',
+                        height: '32px',
                         '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
                         '&:hover fieldset': { borderColor: '#4CAF50' },
                         '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
                       },
-                      '& .MuiInputBase-input': { color: '#4CAF50' }
+                      '& .MuiInputBase-input': { color: '#4CAF50', padding: '6px 8px' }
                     }}
                   />
                   
-                  <Typography variant="body2" sx={{ color: '#e2e8f0' }}>
+                  <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
                     import
                   </Typography>
                   
@@ -1967,16 +2069,17 @@ if __name__ == "__main__":
                       }
                     }}
                     sx={{
-                      minWidth: '160px',
+                      minWidth: '140px',
                       '& .MuiOutlinedInput-root': {
                         bgcolor: 'rgba(255, 255, 255, 0.1)',
                         color: '#4CAF50',
-                        fontSize: '0.8rem',
+                        fontSize: '0.75rem',
+                        height: '32px',
                         '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
                         '&:hover fieldset': { borderColor: '#4CAF50' },
                         '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
                       },
-                      '& .MuiInputBase-input': { color: '#4CAF50' }
+                      '& .MuiInputBase-input': { color: '#4CAF50', padding: '6px 8px' }
                     }}
                   />
                   
@@ -1987,11 +2090,14 @@ if __name__ == "__main__":
                      disabled={!newImportModule.trim() || !newImportItems.trim()}
                      sx={{
                        bgcolor: '#4CAF50',
+                       fontSize: '0.75rem',
+                       height: '32px',
+                       minWidth: '80px',
                        '&:hover': { bgcolor: '#45a049' },
                        '&:disabled': { bgcolor: 'rgba(76, 175, 80, 0.3)' }
                      }}
                    >
-                     Add Import
+                     ADD IMPORT
                    </Button>
                  </Box>
                  
@@ -2000,133 +2106,153 @@ if __name__ == "__main__":
                    display: 'flex', 
                    justifyContent: 'space-between',
                    alignItems: 'center',
-                   mt: 2,
-                   pt: 2,
+                   mt: 1.5,
+                   pt: 1.5,
                    borderTop: '1px solid rgba(255, 255, 255, 0.2)'
                  }}>
-                   <Typography variant="body2" sx={{ color: '#2196F3', fontWeight: 'bold' }}>
+                   <Typography variant="body2" sx={{ color: '#2196F3', fontWeight: 'bold', fontSize: '0.85rem' }}>
                      🔍 Validate Import Structure
                    </Typography>
                    
                    <Button
                      onClick={validateImportsAndStructure}
                      variant="contained"
-                     size="medium"
+                     size="small"
                      sx={{
                        bgcolor: '#FF9800',
                        color: 'white',
                        fontWeight: 'bold',
+                       fontSize: '0.75rem',
+                       height: '32px',
                        '&:hover': { bgcolor: '#F57C00' }
                      }}
                    >
-                     Validate Imports & Structure
+                     VALIDATE IMPORTS & STRUCTURE
                    </Button>
                  </Box>
                               </Box>
                
                {/* Validation Results */}
-               {/* Comprehensive Validation Results - Commented out for simple alert approach */}
-               {/* 
+               {/* Compact Validation Results */}
                {showValidation && validationResults && (
                  <Box sx={{ 
-                   p: 2, 
+                   p: 1.2, 
+                   mb: 1.5,
                    bgcolor: validationResults.isValid 
                      ? 'rgba(76, 175, 80, 0.1)' 
                      : 'rgba(244, 67, 54, 0.1)',
-                   borderLeft: `4px solid ${validationResults.isValid ? '#4CAF50' : '#f44336'}`,
-                   mb: 2,
+                   borderLeft: `3px solid ${validationResults.isValid ? '#4CAF50' : '#f44336'}`,
+                   borderRadius: 0.5,
                    position: 'relative'
                  }}>
-                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-                     <Typography variant="h6" sx={{ 
-                       color: validationResults.isValid ? '#4CAF50' : '#f44336', 
-                       fontWeight: 'bold',
-                       display: 'flex',
-                       alignItems: 'center',
-                       gap: 1
-                     }}>
-                       {validationResults.isValid ? '✅ Validation Passed!' : '❌ Validation Failed'}
-                     </Typography>
+                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                       <Typography variant="body2" sx={{ 
+                         color: validationResults.isValid ? '#4CAF50' : '#f44336', 
+                         fontWeight: 'bold',
+                         fontSize: '0.85rem'
+                       }}>
+                         {validationResults.isValid ? '✅ Validation Passed' : '❌ Validation Issues'}
+                       </Typography>
+                       
+                       {/* Expand/Collapse button for errors */}
+                       {validationResults.errors.length > 0 && (
+                         <IconButton
+                           onClick={() => setExpandedValidation(!expandedValidation)}
+                           size="small"
+                           sx={{ 
+                             color: '#f44336',
+                             p: 0.3
+                           }}
+                           title={expandedValidation ? 'Hide details' : 'Show details'}
+                         >
+                           {expandedValidation ? 
+                             <Box sx={{ fontSize: '0.8rem' }}>▼</Box> : 
+                             <Box sx={{ fontSize: '0.8rem' }}>▶</Box>
+                           }
+                         </IconButton>
+                       )}
+                     </Box>
                      
                      <IconButton
                        onClick={() => setShowValidation(false)}
                        size="small"
-                       sx={{ color: 'rgba(255, 255, 255, 0.7)' }}
+                       sx={{ 
+                         color: 'rgba(255, 255, 255, 0.7)',
+                         p: 0.3
+                       }}
                      >
                        <DeleteIcon fontSize="small" />
                      </IconButton>
                    </Box>
                    
-                   {/* Success Messages */}
-                   {/* {validationResults.successes.length > 0 && (
-                     <Box sx={{ mb: 2 }}>
-                       <Typography variant="subtitle2" sx={{ color: '#4CAF50', fontWeight: 'bold', mb: 1 }}>
-                         ✅ What&apos;s Working:
-                       </Typography>
-                       {validationResults.successes.map((success, index) => (
-                         <Typography key={index} variant="body2" sx={{ 
-                           color: '#4CAF50', 
-                           ml: 2, 
-                           mb: 0.5,
-                           fontSize: '0.85rem'
-                         }}>
-                           {success}
-                         </Typography>
-                       ))}
+                   {/* Error Messages - Expandable */}
+                   {validationResults.errors.length > 0 && (
+                     <Box sx={{ mt: 0.8 }}>
+                       {expandedValidation ? (
+                         // Show all errors when expanded
+                         validationResults.errors.map((error, index) => (
+                           <Typography key={index} variant="body2" sx={{ 
+                             color: '#f44336', 
+                             fontSize: '0.75rem',
+                             mb: 0.4,
+                             lineHeight: 1.3
+                           }}>
+                             • {error}
+                           </Typography>
+                         ))
+                       ) : (
+                         // Show limited errors when collapsed
+                         <>
+                           {validationResults.errors.slice(0, 2).map((error, index) => (
+                             <Typography key={index} variant="body2" sx={{ 
+                               color: '#f44336', 
+                               fontSize: '0.75rem',
+                               mb: 0.4,
+                               lineHeight: 1.3
+                             }}>
+                               • {error}
+                             </Typography>
+                           ))}
+                           {validationResults.errors.length > 2 && (
+                             <Typography variant="caption" sx={{ 
+                               color: '#f44336', 
+                               fontStyle: 'italic',
+                               fontSize: '0.7rem'
+                             }}>
+                               +{validationResults.errors.length - 2} more issues... (click ▶ to expand)
+                             </Typography>
+                           )}
+                         </>
+                       )}
                      </Box>
-                   )} */}
+                   )}
                    
-                   {/* Error Messages */}
-                   {/* {validationResults.errors.length > 0 && (
-                     <Box sx={{ mb: 2 }}>
-                       <Typography variant="subtitle2" sx={{ color: '#f44336', fontWeight: 'bold', mb: 1 }}>
-                         ❌ Issues Found:
-                       </Typography>
-                       {validationResults.errors.map((error, index) => (
-                         <Typography key={index} variant="body2" sx={{ 
-                           color: '#f44336', 
-                           ml: 2, 
-                           mb: 0.5,
-                           fontSize: '0.85rem'
-                         }}>
-                           • {error}
-                         </Typography>
-                       ))}
-                     </Box>
-                   )} */}
-                   
-                   {/* Warning Messages */}
-                   {/* {validationResults.warnings.length > 0 && (
-                     <Box sx={{ mb: 2 }}>
-                       <Typography variant="subtitle2" sx={{ color: '#FF9800', fontWeight: 'bold', mb: 1 }}>
-                         ⚠️ Warnings:
-                       </Typography>
-                       {validationResults.warnings.map((warning, index) => (
-                         <Typography key={index} variant="body2" sx={{ 
-                           color: '#FF9800', 
-                           ml: 2, 
-                           mb: 0.5,
-                           fontSize: '0.85rem'
-                         }}>
-                           • {warning}
-                         </Typography>
-                       ))}
-                     </Box>
-                   )} */}
-                 {/* </Box>
-               )} */}
+                   {/* Success message - Brief */}
+                   {validationResults.isValid && (
+                     <Typography variant="body2" sx={{ 
+                       color: '#4CAF50', 
+                       fontSize: '0.75rem',
+                       mt: 0.4
+                     }}>
+                       All import statements and file paths are correctly configured.
+                     </Typography>
+                   )}
+                 </Box>
+               )}
                
                {/* Editable Lines Info Banner */}
               <Box sx={{ 
-                p: 2, 
+                p: 1.2, 
                 bgcolor: 'rgba(255, 215, 0, 0.1)', 
-                borderLeft: '4px solid #ffd700',
+                borderLeft: '3px solid #ffd700',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 1
+                gap: 0.8,
+                mb: 1
               }}>
-                <EditIcon sx={{ color: '#ffd700', fontSize: '1.2rem' }} />
-                                 <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold' }}>
+                <EditIcon sx={{ color: '#ffd700', fontSize: '1rem' }} />
+                                 <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold', fontSize: '0.8rem', lineHeight: 1.3 }}>
                    💡 Additional editable sections:<br />
                    • Files array: Click the blue highlighted filenames to edit them<br />
                    • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
@@ -2196,11 +2322,13 @@ if __name__ == "__main__":
             <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
               <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
                 Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
-                The Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
+                The compact Import Manager allows students to dynamically add, remove, and edit import statements at the top of the file. 
                 The files array allows students to edit the three filenames by clicking on the blue highlighted areas.
                 The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
-                Students can enable/disable imports and see real-time updates in the code editor.
                 The validation system checks that import statements correctly match the organized file structure.
+                Advanced validation also ensures data file paths are consistent with their folder organization.
+                Validation issues can be expanded/collapsed by clicking the arrow button for detailed error messages.
+                The NEXT button is disabled until all validation issues are resolved.
               </Typography>
             </Paper>
           </Box>
@@ -2230,12 +2358,22 @@ if __name__ == "__main__":
           
           <Button
             variant="contained"
+            disabled={validationResults && !validationResults.isValid}
             sx={{ 
-              bgcolor: 'black',
+              bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : 'black',
               color: 'white',
-              '&:hover': { bgcolor: '#6e00ff' },
-              '&:active': { bgcolor: '#6e00ff' }
+              '&:hover': { 
+                bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : '#6e00ff' 
+              },
+              '&:active': { 
+                bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : '#6e00ff' 
+              },
+              '&:disabled': {
+                bgcolor: 'grey.500',
+                color: 'rgba(255, 255, 255, 0.6)'
+              }
             }}
+            title={validationResults && !validationResults.isValid ? 'Fix validation issues to continue' : 'Proceed to next step'}
           >
             NEXT
           </Button>
