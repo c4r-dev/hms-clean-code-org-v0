@@ -574,7 +574,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
             <div 
               key={index}
               style={{ 
-                height: '1.4em',
+                height: '1.55em',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-end',
@@ -582,7 +582,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                 fontWeight: isEditableLine(index) ? 'bold' : 'normal',
                 fontSize: '0.8rem',
                 fontFamily: 'monospace',
-                lineHeight: '1.4',
+                lineHeight: '1.5',
                 backgroundColor: isEditableLine(index) ? 'rgba(255, 215, 0, 0.1)' : 'transparent'
               }}
             >
