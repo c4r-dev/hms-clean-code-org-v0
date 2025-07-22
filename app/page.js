@@ -751,10 +751,7 @@ const CodeRefactoringInterface = () => {
   const [isMounted, setIsMounted] = useState(false);
 
   // Import management state
-  const [customImports, setCustomImports] = useState([
-    { id: 1, module: '', items: '' },
-    { id: 2, module: '', items: '' }
-  ]);
+  const [customImports, setCustomImports] = useState([]);
   const [newImportModule, setNewImportModule] = useState('');
   const [newImportItems, setNewImportItems] = useState('');
 
@@ -1414,10 +1411,14 @@ if __name__ == "__main__":
   const addNewImport = () => {
     const newImport = {
       id: Date.now(),
-      module: '',
-      items: ''
+      module: newImportModule.trim(),
+      items: newImportItems.trim()
     };
     setCustomImports(prev => [...prev, newImport]);
+    
+    // Clear the form fields
+    setNewImportModule('');
+    setNewImportItems('');
   };
 
   const removeImport = (importId) => {
