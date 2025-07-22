@@ -2301,7 +2301,7 @@ if __name__ == "__main__":
               </Box>
               
               {/* Control Buttons */}
-              <Box sx={{ p: 2, bgcolor: 'grey.800', display: 'flex', justifyContent: 'space-between' }}>
+              {/* <Box sx={{ p: 2, bgcolor: 'grey.800', display: 'flex', justifyContent: 'space-between' }}>
                 <Button
                   variant="contained"
                   sx={{ 
@@ -2325,7 +2325,7 @@ if __name__ == "__main__":
                 >
                   EXECUTE SCRIPT
                 </Button>
-              </Box>
+              </Box> */}
             </Paper>
             
             {/* Help Text */}
