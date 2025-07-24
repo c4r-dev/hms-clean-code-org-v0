@@ -996,6 +996,14 @@ const CodeRefactoringInterface = () => {
     }
   }, [organizationFiles, folders, currentView]);
 
+  // Update main.py content when custom imports change, but preserve user edits
+  useEffect(() => {
+    if (currentView === 'final') {
+      const newContent = generateMainPyContentWithEditableLines(mainPyContent);
+      setMainPyContent(newContent);
+    }
+  }, [customImports, files]);  // Regenerate when imports or files change
+
   // Function to parse code into function blocks
   const parseFunctionBlocks = (code) => {
     const lines = code.split('\n');
@@ -1627,11 +1635,16 @@ if __name__ == "__main__":
       const fileStructureJson = exportFileStructure();
       const fileStructure = JSON.parse(fileStructureJson);
 
-      // Find all files that are in folders (not in root, excluding main.py and data files)
-      // Data files are validated separately via path prefix/filename validation
+      // Find all Python files that are in folders (not in root, excluding main.py)
+      // Only Python files are required to be imported via import manager
+      // Other file types (data files, images, etc.) are optional and validated separately
       const dataFileIds = ['nd2_tail', 'tif_vang', 'nwb_sub11'];
-      filesInFolders = fileStructure.files.filter(file => 
-        !file.isInRoot && file.fileId !== 'main' && file.folderName && !dataFileIds.includes(file.fileId)
+      
+            filesInFolders = fileStructure.files.filter(file => 
+        !file.isInRoot && 
+        file.fileId !== 'main' && 
+        file.folderName && 
+        file.fileType === 'PY File'  // Fixed: using fileType instead of type
       );
 
       if (filesInFolders.length === 0) {
@@ -1675,9 +1688,11 @@ if __name__ == "__main__":
       if (results.isValid) {
         results.successes.push(`🎉 All ${filesInFolders.length} Python files in folders are properly imported!`);
         results.successes.push(`📁 Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
+        results.successes.push(`ℹ️ Other file types (images, text files, etc.) are optional and don't need to be imported.`);
       } else {
         results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} Python files are missing from import statements`);
         results.errors.push(`📁 Note: Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
+        results.errors.push(`ℹ️ Other file types (images, text files, etc.) are optional and don't need to be imported.`);
       }
 
       // Show which files need to be imported and provide complete examples
@@ -1731,7 +1746,29 @@ if __name__ == "__main__":
   };
 
   // Enhanced helper function to generate main.py content with editable lines
-  const generateMainPyContentWithEditableLines = () => {
+  const generateMainPyContentWithEditableLines = (existingContent = null) => {
+    // Extract user edits from existing content to preserve them
+    let preservedPathPrefix = '';
+    let preservedFilenames = [];
+    
+    if (existingContent) {
+      const existingLines = existingContent.split('\n');
+      
+      // Extract path prefix from load_file line
+      const loadFileLine = existingLines.find(line => line.includes('load_file(f"') && line.includes('{filename}'));
+      if (loadFileLine) {
+        const match = loadFileLine.match(/load_file\(f"([^"]*)\{filename\}"\)/);
+        if (match) {
+          preservedPathPrefix = match[1];
+        }
+      }
+      
+      // Extract filenames from files array
+      const filesArrayLine = existingLines.find(line => line.trim().startsWith('files = ['));
+      if (filesArrayLine) {
+        preservedFilenames = parseFilesArray(filesArrayLine);
+      }
+    }
     const assignedCodeBlocks = files.flatMap(f => f.codeBlocks?.map(block => block.name) || []);
     
     let mainContent = '';
@@ -1794,12 +1831,29 @@ if __name__ == "__main__":
       const isExcluded = excludedLines.has(originalLineIndex);
       
       if (!isExcluded && lines[originalLineIndex] !== undefined) {
+        let line = lines[originalLineIndex];
+        
         // Add editable line 38 if we reach it (adjusted for new lines)
         if (originalLineIndex === 38) {
-          mainContent += (lines[originalLineIndex] || '    blur_factor = 1') + '\n';
-        } else {
-          mainContent += lines[originalLineIndex] + '\n';
+          line = lines[originalLineIndex] || '    blur_factor = 1';
         }
+        
+        // Preserve user edits to files array
+        if (line.trim().startsWith('files = [') && preservedFilenames.length > 0) {
+          const quotedFiles = preservedFilenames.map(file => `'${file}'`);
+          line = line.replace(/files = \[.*\]/, `files = [${quotedFiles.join(', ')}]`);
+        }
+        
+        // Preserve user edits to load_file path prefix
+        if (line.includes('load_file(f"') && line.includes('{filename}')) {
+          if (preservedPathPrefix !== '') {
+            line = line.replace(/load_file\(f"[^"]*\{filename\}"\)/, `load_file(f"${preservedPathPrefix}{filename}")`);
+          } else {
+            line = line.replace(/load_file\(f"[^"]*\{filename\}"\)/, `load_file(f"{filename}")`);
+          }
+        }
+        
+        mainContent += line + '\n';
       }
     }
     
@@ -1808,10 +1862,22 @@ if __name__ == "__main__":
     for (let i = 181; i < lines.length; i++) {
       if (lines[i] !== undefined) {
         let line = lines[i];
-        // Make the load_file line editable by ensuring it has the {filename} pattern
-        if (line.includes('load_file(f"{filename}")')) {
-          line = '        image, image_parameters = load_file(f"{filename}")';
+        
+        // Preserve user edits to files array
+        if (line.trim().startsWith('files = [') && preservedFilenames.length > 0) {
+          const quotedFiles = preservedFilenames.map(file => `'${file}'`);
+          line = line.replace(/files = \[.*\]/, `files = [${quotedFiles.join(', ')}]`);
         }
+        
+        // Preserve user edits to load_file path prefix
+        if (line.includes('load_file(f"') && line.includes('{filename}')) {
+          if (preservedPathPrefix !== '') {
+            line = line.replace(/load_file\(f"[^"]*\{filename\}"\)/, `load_file(f"${preservedPathPrefix}{filename}")`);
+          } else {
+            line = line.replace(/load_file\(f"[^"]*\{filename\}"\)/, `load_file(f"{filename}")`);
+          }
+        }
+        
         mainContent += line + '\n';
       }
     }
@@ -2396,7 +2462,7 @@ if __name__ == "__main__":
                 The compact Import Manager allows students to dynamically add, remove, and edit import statements for Python files. 
                 The files array allows students to edit the three data filenames by clicking on the blue highlighted areas.
                 The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
-                The validation system checks that Python files have correct import statements, while data files (.nd2, .nwb, .tif) are validated through correct path prefix/filename usage in the code.
+                The validation system only requires Python files to have correct import statements, while data files (.nd2, .nwb, .tif) are validated through correct path prefix/filename usage in the code. Other file types are optional.
                 Advanced validation ensures data file paths are consistent with their folder organization.
                 Validation issues can be expanded/collapsed by clicking the arrow button for detailed error messages.
                 The NEXT button is disabled until all validation issues are resolved.
@@ -3456,7 +3522,7 @@ Codebase Organization
             come up with ideas for how to organize the project. You can click on a file to learn 
             more about it. The <strong>main.py</strong> file contains the remaining unassigned code and main execution logic.
             <br /><br />
-            <strong>Step 1:</strong> Create folders and organize your created files (file 1.py, file 2.py, etc.) into them.
+            <strong>Step 1:</strong> Create folders and organize your created files into them.
             <br />
             <strong>Step 2:</strong> Click &quot;MUST ORGANIZE PROJECT&quot; to check your progress.
             <br />
