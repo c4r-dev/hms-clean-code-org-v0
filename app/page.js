@@ -690,7 +690,7 @@ const CodeRefactoringInterface = () => {
   const router = useRouter();
   const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', or 'final'
   const [files, setFiles] = useState([
-    { id: 1, name: 'file_1.py', color: 'primary', functions: [], codeBlocks: [], content: '', functionsCode: {} }
+    { id: 1, name: 'file_1.py', color: 'purple', functions: [], codeBlocks: [], content: '', functionsCode: {} }
   ]);
   
   const [selectedFile, setSelectedFile] = useState(1);
@@ -791,20 +791,10 @@ const CodeRefactoringInterface = () => {
       }
     }
     
-    const emptyLines = totalLines - lastCodeLine;
-    let description = '';
-    
-    if (emptyLines > 0) {
-      description = `Lines 1-${lastCodeLine} contain code, lines ${lastCodeLine + 1}-${totalLines} are empty`;
-    } else {
-      description = `Lines 1-${totalLines} contain code, no empty lines`;
-    }
-    
     setLineCountInfo({
       codeLines,
       totalLines,
-      lastCodeLine,
-      description
+      lastCodeLine
     });
   }, []);
 
@@ -1352,7 +1342,31 @@ if __name__ == "__main__":
     'plot_multiple_files'
   ];
 
-  const colors = ['primary', 'secondary', 'success', 'error', 'warning', 'info'];
+  const colors = ['purple', 'green', 'blue', 'orange', 'red', 'teal', 'indigo', 'pink'];
+  
+  // Color mapping for consistent UI colors
+  const colorMap = {
+    purple: '#6a1b9a',
+    green: '#16a34a', 
+    blue: '#2563eb',
+    orange: '#ea580c',
+    red: '#dc2626',
+    teal: '#0d9488',
+    indigo: '#4f46e5',
+    pink: '#db2777'
+  };
+  
+  // Semi-transparent versions for backgrounds
+  const colorMapTransparent = {
+    purple: 'rgba(106, 27, 154, 0.25)',
+    green: 'rgba(22, 163, 74, 0.25)',
+    blue: 'rgba(37, 99, 235, 0.25)',
+    orange: 'rgba(234, 88, 12, 0.25)',
+    red: 'rgba(220, 38, 38, 0.25)',
+    teal: 'rgba(13, 148, 136, 0.25)',
+    indigo: 'rgba(79, 70, 229, 0.25)',
+    pink: 'rgba(219, 39, 119, 0.25)'
+  };
 
   // Organization view functions - moved up before useEffect hooks
   const getFilesInFolder = (folderId) => {
@@ -1987,14 +2001,13 @@ if __name__ == "__main__":
                     alignItems: 'center',
                     py: 0.5,
                     px: 1,
-                    bgcolor: file.id === 'main' ? 'rgba(255, 215, 0, 0.2)' : 'transparent',
-                    border: file.id === 'main' ? '1px solid #FFD700' : 'none',
+                    bgcolor: 'transparent',
                     borderRadius: 1,
                     mb: 0.5
                   }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       {getFileIcon(file.type)}
-                      <Typography variant="body2" sx={{ ml: 1, color: file.id === 'main' ? '#FFD700' : 'white' }}>
+                      <Typography variant="body2" sx={{ ml: 1, color: 'white' }}>
                         {file.name}
                       </Typography>
                     </Box>
@@ -2078,7 +2091,7 @@ if __name__ == "__main__":
                        p: 0.8,
                        bgcolor: 'rgba(255, 255, 255, 0.1)',
                        borderRadius: 0.5,
-                       border: '1px solid #2196F3'
+                       border: '1px solid #64748b'
                      }}>
                       <Typography variant="body2" sx={{ color: 'white', minWidth: '30px', fontSize: '0.8rem' }}>
                         {index + 7}:
@@ -2497,16 +2510,16 @@ if __name__ == "__main__":
             variant="contained"
             disabled={validationResults && !validationResults.isValid}
             sx={{ 
-              bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : 'black',
+              bgcolor: validationResults && !validationResults.isValid ? '#64748b' : 'black',
               color: 'white',
               '&:hover': { 
-                bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : '#6e00ff' 
+                bgcolor: validationResults && !validationResults.isValid ? '#64748b' : '#6e00ff' 
               },
               '&:active': { 
-                bgcolor: validationResults && !validationResults.isValid ? 'grey.500' : '#6e00ff' 
+                bgcolor: validationResults && !validationResults.isValid ? '#64748b' : '#6e00ff' 
               },
               '&:disabled': {
-                bgcolor: 'grey.500',
+                bgcolor: '#64748b',
                 color: 'rgba(255, 255, 255, 0.6)'
               }
             }}
@@ -2674,14 +2687,6 @@ if __name__ == "__main__":
   const deleteFile = (fileId) => {
     const fileToDelete = files.find(f => f.id === fileId);
     
-    // If the file being deleted contains moved functions, return them to the left side
-    if (fileToDelete && fileToDelete.functions && fileToDelete.functions.length > 0) {
-      setMovedFunctions(prev => {
-        const newMovedFunctions = new Set(prev);
-        fileToDelete.functions.forEach(func => newMovedFunctions.delete(func));
-        return newMovedFunctions;
-      });
-    }
     
     setFiles(files.filter(f => f.id !== fileId));
     if (selectedFile === fileId) {
@@ -2852,26 +2857,38 @@ if __name__ == "__main__":
         // Don't mark imports as moved - they can be dragged multiple times
       }
     } else if (draggedFunctionBlock.type === 'function') {
-      // Handle function drops (existing logic)
-      if (targetFile && !targetFile.functions.includes(draggedFunctionBlock.name)) {
-        
+      // Handle function drops - first remove from all files, then add to target
+      
+      // Remove function from all files first (including functionsCode)
+      const updatedFiles = files.map(f => ({
+        ...f,
+        functions: f.functions.filter(func => func !== draggedFunctionBlock.name),
+        functionsCode: f.functionsCode ? Object.fromEntries(
+          Object.entries(f.functionsCode).filter(([key]) => key !== draggedFunctionBlock.name)
+        ) : {}
+      }));
+      
+      // Find the target file in the updated files array
+      const targetFileFromUpdated = updatedFiles.find(f => f.id === fileId);
+      
+      if (targetFileFromUpdated) {
         // Create new functionsCode object
         const newFunctionsCode = {
-          ...(targetFile.functionsCode || {}),
+          ...(targetFileFromUpdated.functionsCode || {}),
           [draggedFunctionBlock.name]: draggedFunctionBlock.lines.join('\n')
         };
         
         // Create new functions array
-        const newFunctions = [...targetFile.functions, draggedFunctionBlock.name];
+        const newFunctions = [...targetFileFromUpdated.functions, draggedFunctionBlock.name];
         
         // Generate content
-        let content = `# ${targetFile.name}\n\n`;
+        let content = `# ${targetFileFromUpdated.name}\n\n`;
         
         // Add imports first if any
-        if (targetFile.imports && targetFile.imports.length > 0) {
-          targetFile.imports.forEach(importName => {
-            if (targetFile.importsCode?.[importName]) {
-              content += `${targetFile.importsCode[importName]}\n`;
+        if (targetFileFromUpdated.imports && targetFileFromUpdated.imports.length > 0) {
+          targetFileFromUpdated.imports.forEach(importName => {
+            if (targetFileFromUpdated.importsCode?.[importName]) {
+              content += `${targetFileFromUpdated.importsCode[importName]}\n`;
             }
           });
           content += '\n';
@@ -2890,16 +2907,16 @@ if __name__ == "__main__":
         });
       
       // Add code blocks content
-      if (targetFile.codeBlocks && targetFile.codeBlocks.length > 0) {
-        targetFile.codeBlocks.forEach(block => {
+      if (targetFileFromUpdated.codeBlocks && targetFileFromUpdated.codeBlocks.length > 0) {
+        targetFileFromUpdated.codeBlocks.forEach(block => {
           content += `# ${block.name}\n`;
           content += `${block.content}\n\n`;
         });
       }
       
       // Create updated file object (immutable update)
-      const updatedFile = {
-        ...targetFile,
+      const updatedTargetFile = {
+        ...targetFileFromUpdated,
         functions: newFunctions,
         functionsCode: newFunctionsCode,
         content: content
@@ -2907,13 +2924,12 @@ if __name__ == "__main__":
       
       console.log('Function dropped:', draggedFunctionBlock.name);
       console.log('Generated content:', content);
-      console.log('Updated file:', updatedFile);
+      console.log('Updated file:', updatedTargetFile);
       
-      // Update files state with new file object
-      setFiles(prevFiles => prevFiles.map(f => f.id === fileId ? updatedFile : f));
+      // Update files state with the final files array including the updated target
+      const finalFiles = updatedFiles.map(f => f.id === fileId ? updatedTargetFile : f);
+      setFiles(finalFiles);
       
-        // Mark this function as moved so it doesn't appear on the left side
-        setMovedFunctions(prev => new Set([...prev, draggedFunctionBlock.name]));
       }
     }
     
@@ -2936,9 +2952,6 @@ if __name__ == "__main__":
       // Update the files array with the modified target file
       const finalFiles = updatedFiles.map(f => f.id === fileId ? updatedTargetFile : f);
       setFiles(finalFiles);
-      
-      // Mark function as moved
-      setMovedFunctions(prev => new Set([...prev, draggedFunction]));
     } else {
       setFiles(updatedFiles);
     }
@@ -2946,7 +2959,35 @@ if __name__ == "__main__":
     setDraggedFunction(null);
     
     // Update content after adding function
-    setTimeout(() => updateFileContent(fileId), 0);
+    setTimeout(() => {
+      // Use the updated files state for content generation
+      const updatedFile = files.find(f => f.id === fileId);
+      if (updatedFile) {
+        let content = `# ${updatedFile.name}\n\n`;
+        
+        // Add functions content
+        updatedFile.functions.forEach(functionName => {
+          if (updatedFile.functionsCode && updatedFile.functionsCode[functionName]) {
+            // Use actual function code if available
+            content += `${updatedFile.functionsCode[functionName]}\n\n`;
+          } else {
+            // Fallback to placeholder code
+            content += `# Function: ${functionName}\n`;
+            content += `def ${functionName}():\n    # Implementation here\n    pass\n\n`;
+          }
+        });
+        
+        // Add code blocks content
+        if (updatedFile.codeBlocks && updatedFile.codeBlocks.length > 0) {
+          updatedFile.codeBlocks.forEach(block => {
+            content += `# ${block.name}\n`;
+            content += `${block.content}\n\n`;
+          });
+        }
+        
+        setFiles(prevFiles => prevFiles.map(f => f.id === fileId ? { ...f, content } : f));
+      }
+    }, 100);
     
   } else if (draggedCodeBlock) {
     const targetFile = files.find(f => f.id === fileId);
@@ -2984,13 +3025,6 @@ if __name__ == "__main__":
       }));
       setFiles(updatedFiles);
       setDraggedFunction(null);
-      
-      // If the function was moved from the example code, return it to the left side
-      setMovedFunctions(prev => {
-        const newMovedFunctions = new Set(prev);
-        newMovedFunctions.delete(draggedFunction);
-        return newMovedFunctions;
-      });
       
       // Update content for all files after removing function
       files.forEach(file => updateFileContent(file.id));
@@ -3129,9 +3163,21 @@ if __name__ == "__main__":
 
   const handleCreateFolder = () => {
     if (newFolderName.trim()) {
+      const trimmedName = newFolderName.trim();
+      
+      // Check if folder with same name already exists
+      const existingFolder = folders.find(folder => 
+        folder.name.toLowerCase() === trimmedName.toLowerCase()
+      );
+      
+      if (existingFolder) {
+        alert(`A folder named "${trimmedName}" already exists. Please choose a different name.`);
+        return;
+      }
+      
       const newFolder = {
         id: Date.now(),
-        name: newFolderName.trim(),
+        name: trimmedName,
         type: 'Folder',
         parent: null
       };
@@ -3156,10 +3202,68 @@ if __name__ == "__main__":
     }
   };
 
+  const handleDeleteFolder = (folderId) => {
+    const folderToDelete = folders.find(f => f.id === folderId);
+    if (!folderToDelete) return;
+    
+    // Check if folder contains any files
+    const filesInFolder = organizationFiles.filter(file => file.folder === folderId);
+    
+    if (filesInFolder.length > 0) {
+      const confirmDelete = window.confirm(
+        `The folder "${folderToDelete.name}" contains ${filesInFolder.length} file(s). ` +
+        `Deleting this folder will move all files back to the root directory. ` +
+        `Do you want to continue?`
+      );
+      
+      if (!confirmDelete) {
+        return;
+      }
+      
+      // Move all files in the folder back to root
+      const updatedFiles = organizationFiles.map(file => 
+        file.folder === folderId ? { ...file, folder: null } : file
+      );
+      setOrganizationFiles(updatedFiles);
+    } else {
+      // Empty folder - ask for simple confirmation
+      const confirmDelete = window.confirm(
+        `Are you sure you want to delete the folder "${folderToDelete.name}"?`
+      );
+      
+      if (!confirmDelete) {
+        return;
+      }
+    }
+    
+    // Remove folder from folders array
+    const updatedFolders = folders.filter(f => f.id !== folderId);
+    setFolders(updatedFolders);
+    
+    // Remove from expanded folders
+    const newExpanded = new Set(expandedFolders);
+    newExpanded.delete(folderId);
+    setExpandedFolders(newExpanded);
+    
+    // Update file locations
+    const newLocations = updateFileLocations(organizationFiles, updatedFolders);
+    setFileLocations(newLocations);
+    
+    handleCloseContextMenu();
+    
+    console.log('Folder deleted:', {
+      folderName: folderToDelete.name,
+      folderId: folderId,
+      filesMovedToRoot: filesInFolder.length,
+      timestamp: new Date().toISOString()
+    });
+  };
+
   const handleFileDragStart = (e, file) => {
     // Prevent main.py from being dragged
     if (file.id === 'main') {
       e.preventDefault();
+      alert('The main.py file cannot be moved or dragged. It must remain in the root directory as it contains the main execution logic.');
       return;
     }
     setDraggedFile(file);
@@ -3319,7 +3423,7 @@ if __name__ == "__main__":
           pl: `${paddingLeft}px`,
           pr: 1,
           py: 0.5,
-          cursor: file.id === 'main' ? 'default' : 'pointer', // Different cursor for main.py
+          cursor: file.id === 'main' ? 'not-allowed' : 'pointer', // Different cursor for main.py
           bgcolor: isSelected ? 'primary.main' : 'transparent',
           color: isSelected ? 'white' : 'white',
           '&:hover': {
@@ -3327,7 +3431,6 @@ if __name__ == "__main__":
           },
           borderRadius: 1,
           mx: 0.5,
-          border: isMainFile ? '2px solid #FFD700' : 'none',
           '&::before': level > 0 ? {
             content: '""',
             position: 'absolute',
@@ -3351,7 +3454,7 @@ if __name__ == "__main__":
         }}
         onClick={() => handleOrgFileClick(file)}
         onContextMenu={(e) => handleContextMenu(e, file)}
-        draggable={file.id !== 'main'} // Prevent main.py from being draggable
+        draggable={true} // Allow drag attempt to trigger warning
         onDragStart={(e) => handleFileDragStart(e, file)}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, position: 'relative', zIndex: 2 }}>
@@ -3361,29 +3464,11 @@ if __name__ == "__main__":
             sx={{ 
               ml: 1, 
               fontSize: '0.85rem',
-              fontWeight: isMainFile ? 'bold' : 'normal',
-              color: isMainFile ? '#FFD700' : 'inherit'
+              fontWeight: isMainFile ? 'bold' : 'normal'
             }}
           >
             {file.name}
           </Typography>
-          {isMainFile && (
-            <Typography 
-              variant="caption" 
-              sx={{ 
-                ml: 1, 
-                px: 1, 
-                py: 0.25,
-                bgcolor: '#FFD700',
-                color: 'black',
-                borderRadius: 1,
-                fontSize: '0.65rem',
-                fontWeight: 'bold'
-              }}
-            >
-              MAIN (FIXED)
-            </Typography>
-          )}
         </Box>
         <Typography 
           variant="caption" 
@@ -3477,19 +3562,40 @@ if __name__ == "__main__":
               {folder.name}
             </Typography>
           </Box>
-          <Typography 
-            variant="caption" 
-            sx={{ 
-              fontSize: '0.75rem',
-              color: 'rgba(255,255,255,0.6)',
-              fontWeight: 500,
-              minWidth: 'fit-content',
-              position: 'relative',
-              zIndex: 2
-            }}
-          >
-            {folderFiles.length} files
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                fontSize: '0.75rem',
+                color: 'rgba(255,255,255,0.6)',
+                fontWeight: 500,
+                minWidth: 'fit-content',
+                position: 'relative',
+                zIndex: 2
+              }}
+            >
+              {folderFiles.length} files
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent folder toggle
+                handleDeleteFolder(folder.id);
+              }}
+              sx={{
+                color: 'rgba(255,255,255,0.5)',
+                p: 0.25,
+                '&:hover': {
+                  color: '#ff4444',
+                  bgcolor: 'rgba(255,68,68,0.1)'
+                },
+                position: 'relative',
+                zIndex: 2
+              }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Box>
         </Box>
         
         {isExpanded && (
@@ -3555,7 +3661,7 @@ Codebase Organization
         {/* Main Content */}
         <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
           {/* Left Side - Project Directory */}
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ width: 400, flexShrink: 0 }}>
             <Paper elevation={2} sx={{ bgcolor: 'grey.800', color: 'white', mb: 2 }}>
               <Box sx={{ p: 2, bgcolor: 'black', color: 'white' }}>
                 <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
@@ -3639,34 +3745,24 @@ Codebase Organization
           <Box sx={{ flex: 1 }}>
             <Card elevation={2} sx={{ p: 2, bgcolor: 'grey.300', minHeight: 400 }}>
               <CardContent>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Click on a file for description
-                </Typography>
-                
                 {selectedOrgFile ? (
-                  <Box>
-                    {selectedOrgFile.id === 'main' && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Typography 
-                          variant="caption" 
-                          sx={{ 
-                            px: 1, 
-                            py: 0.25,
-                            bgcolor: '#FFD700',
-                            color: 'black',
-                            borderRadius: 1,
-                            fontSize: '0.65rem',
-                            fontWeight: 'bold'
-                          }}
-                        >
-                          MAIN SCRIPT
-                        </Typography>
-                      </Box>
-                    )}
-                    <Typography variant="body2" color="text.secondary">
-                      {selectedOrgFile.description}
+                  <>
+                    {/* Instruction text */}
+                    <Typography variant="body2" sx={{ color: '#666', mb: 2, fontStyle: 'italic' }}>
+                      Click to view description of a file
                     </Typography>
                     
+                    {/* Header with file name and description */}
+                    <Box sx={{ mb: 3, pb: 2, borderBottom: '2px solid #ddd' }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#333', mb: 1 }}>
+                        File Name: {selectedOrgFile.name}
+                      </Typography>
+                      <Typography variant="body1" sx={{ color: '#555', lineHeight: 1.4 }}>
+                        Description: {selectedOrgFile.description}
+                      </Typography>
+                    </Box>
+                    
+                    <Box>
                     {selectedOrgFile.functions && selectedOrgFile.functions.length > 0 && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>
@@ -3677,7 +3773,7 @@ Codebase Organization
                             <Box 
                               key={func}
                               sx={{ 
-                                bgcolor: 'primary.main', 
+                                bgcolor: '#64748b', 
                                 color: 'white', 
                                 px: 1, 
                                 py: 0.5, 
@@ -3706,7 +3802,8 @@ Codebase Organization
                         </Box>
                       </Box>
                     )}
-                  </Box>
+                    </Box>
+                  </>
                 ) : (
                   <Typography variant="body2" color="text.secondary">
                     Select a file to view its details
@@ -3828,8 +3925,11 @@ Codebase Organization
           }
         >
           {contextMenu.item?.type === 'Folder' ? (
-            <MenuItem onClick={handleCloseContextMenu}>
-              <Typography variant="body2">Folder Options</Typography>
+            <MenuItem 
+              onClick={() => handleDeleteFolder(contextMenu.item.id)}
+              sx={{ color: 'error.main' }}
+            >
+              Delete Folder
             </MenuItem>
           ) : (
             contextMenu.item && [
@@ -3920,7 +4020,7 @@ Codebase Organization        </Typography>
             {/* Code Display Header with Controls */}
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" sx={{ color: 'white', fontSize: '1rem' }}>
-                Example Script: ({isMounted ? `${lineCountInfo.codeLines} lines of code, ${lineCountInfo.totalLines} lines total` : 'Loading...'})
+                Example Script: (main.py)
               </Typography>
             </Box>
             
@@ -3973,26 +4073,8 @@ Codebase Organization        </Typography>
                   const codeLines = exampleCode.split('\n');
                   const line = index < codeLines.length ? codeLines[index] : '';
                   
-                  // Check if this line belongs to a moved function (same logic as code content)
-                  let isMovedFunction = false;
                   const isMainBlock = line.includes('if __name__ == "__main__":') || 
                                      (index > 0 && codeLines.slice(0, index).some(l => l.includes('if __name__ == "__main__":')));
-                  
-                  if (!isMainBlock) {
-                    for (const block of functionBlocks) {
-                      if (index >= block.startLine && index <= block.endLine) {
-                        if (movedFunctions.has(block.name)) {
-                          isMovedFunction = true;
-                          break;
-                        }
-                      }
-                    }
-                  }
-                  
-                  // Don't render line numbers for moved functions
-                  if (isMovedFunction) {
-                    return null;
-                  }
                   
                   return (
                     <div 
@@ -4035,8 +4117,6 @@ Codebase Organization        </Typography>
                     
                     let functionBlock = null;
                     let isFirstLineOfFunction = false;
-                    let isMovedFunction = false;
-                    
                     // Don't highlight lines after if __name__ == "__main__":
                     const isMainBlock = line.includes('if __name__ == "__main__":') || 
                                        (index > 0 && codeLines.slice(0, index).some(l => l.includes('if __name__ == "__main__":')));
@@ -4045,26 +4125,29 @@ Codebase Organization        </Typography>
                       // Find which function block this line belongs to
                       for (const block of functionBlocks) {
                         if (index >= block.startLine && index <= block.endLine) {
-                          if (movedFunctions.has(block.name)) {
-                            // This line belongs to a moved function
-                            isMovedFunction = true;
-                          } else {
-                            // Only show function if it hasn't been moved
-                            functionBlock = block;
-                            isFirstLineOfFunction = index === block.startLine;
-                          }
+                          functionBlock = block;
+                          isFirstLineOfFunction = index === block.startLine;
                           break;
                         }
                       }
                     }
                     
-                    const backgroundColor = functionBlock ? `${functionBlock.color}40` : 'transparent';
-                    const borderColor = functionBlock ? functionBlock.color : 'transparent';
-                    
-                    // Don't render lines that belong to moved functions
-                    if (isMovedFunction) {
-                      return null;
-                    }
+                    const backgroundColor = functionBlock ? (() => {
+                      // Find which file this function belongs to
+                      const functionFile = files.find(f => f.functions.includes(functionBlock.name));
+                      if (functionFile && colorMapTransparent[functionFile.color]) {
+                        return colorMapTransparent[functionFile.color];
+                      }
+                      return 'rgba(100, 116, 139, 0.25)'; // Default slate grey
+                    })() : 'transparent';
+                    const borderColor = functionBlock ? (() => {
+                      // Find which file this function belongs to
+                      const functionFile = files.find(f => f.functions.includes(functionBlock.name));
+                      if (functionFile && colorMap[functionFile.color]) {
+                        return colorMap[functionFile.color];
+                      }
+                      return '#64748b'; // Default slate grey
+                    })() : 'transparent';
                     
                     // Check if this is the last line of a function block
                     const isLastLineOfFunction = functionBlock && index === functionBlock.endLine;
@@ -4086,7 +4169,7 @@ Codebase Organization        </Typography>
                             alignItems: 'center',
                             borderRadius: '3px',
                             opacity: index < codeLines.length ? 1 : 0.3,
-                            borderLeft: functionBlock ? `3px solid ${functionBlock.color}` : 'none',
+                            borderLeft: functionBlock ? `3px solid ${borderColor}` : 'none',
                             pointerEvents: 'auto'
                           }}
                         >
@@ -4101,7 +4184,14 @@ Codebase Organization        </Typography>
                                 color: '#000000', // Force black text for better contrast
                                 fontWeight: 'bold',
                                 fontSize: `${fontSize * 0.75}rem`,
-                                backgroundColor: functionBlock.color,
+                                backgroundColor: (() => {
+                                  // Find which file this function belongs to
+                                  const functionFile = files.find(f => f.functions.includes(functionBlock.name));
+                                  if (functionFile && colorMap[functionFile.color]) {
+                                    return colorMap[functionFile.color];
+                                  }
+                                  return '#64748b'; // Default slate grey
+                                })(),
                                 padding: '4px 8px',
                                 borderRadius: '4px',
                                 boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
@@ -4161,9 +4251,6 @@ Codebase Organization        </Typography>
                 >
                   Reset View
                 </Button>
-                <Typography variant="caption" sx={{ color: 'white', alignSelf: 'center', ml: 2 }}>
-                  {lineCountInfo.description}
-                </Typography>
               </Box>
             )}
           </Paper>
@@ -4231,7 +4318,7 @@ Codebase Organization        </Typography>
                       }
                       onDoubleClick={() => handleDoubleClick(file.id, file.name.toLowerCase())}
                       sx={{
-                        bgcolor: `${file.color}.main`,
+                        bgcolor: colorMap[file.color] || '#64748b',
                         color: 'white !important',
                         opacity: selectedFile === file.id ? 1 : 0.7,
                         mr: 1,
@@ -4381,7 +4468,7 @@ Codebase Organization        </Typography>
                     key={functionName}
                     label={`${functionName}()`}
                     sx={{ m: 0.5, cursor: 'move' }}
-                    color="primary"
+                    color="default"
                     variant="outlined"
                     draggable
                     onDragStart={(e) => handleDragStart(e, functionName)}
@@ -4394,7 +4481,7 @@ Codebase Organization        </Typography>
                     <Chip
                       label={block.name}
                       sx={{ mb: 1, cursor: 'move' }}
-                      color="secondary"
+                      color="default"
                       variant="filled"
                       draggable
                       onDragStart={(e) => handleCodeBlockDragStart(e, block.name)}
