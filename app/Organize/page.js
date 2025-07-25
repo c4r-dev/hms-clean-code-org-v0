@@ -521,20 +521,26 @@ const ProjectOrganizationPage = () => {
         <Box sx={{ flex: 1 }}>
           <Card elevation={2} sx={{ p: 2, bgcolor: 'grey.300', minHeight: 400 }}>
             <CardContent>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Click on a file for description
-              </Typography>
-              
               {selectedFile ? (
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    {selectedFile.name}
+                <>
+                  {/* Instruction text */}
+                  <Typography variant="body2" sx={{ color: '#666', mb: 2, fontStyle: 'italic' }}>
+                    Click to view description of a file
                   </Typography>
+                  
+                  {/* Header with file name and description */}
+                  <Box sx={{ mb: 3, pb: 2, borderBottom: '2px solid #ddd' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', color: '#333', mb: 1 }}>
+                      File Name: {selectedFile.name}
+                    </Typography>
+                    <Typography variant="body1" sx={{ color: '#555', lineHeight: 1.4 }}>
+                      Description: {selectedFile.description}
+                    </Typography>
+                  </Box>
+                  
+                  <Box>
                   <Typography variant="body2" color="primary" sx={{ fontWeight: 'bold', mb: 1 }}>
                     {selectedFile.type}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {selectedFile.description}
                   </Typography>
                   
                   {selectedFile.functions && selectedFile.functions.length > 0 && (
@@ -547,7 +553,7 @@ const ProjectOrganizationPage = () => {
                           <Box 
                             key={func}
                             sx={{ 
-                              bgcolor: 'primary.main', 
+                              bgcolor: '#64748b', 
                               color: 'white', 
                               px: 1, 
                               py: 0.5, 
@@ -572,7 +578,7 @@ const ProjectOrganizationPage = () => {
                           <Box 
                             key={block}
                             sx={{ 
-                              bgcolor: 'secondary.main', 
+                              bgcolor: '#64748b', 
                               color: 'white', 
                               px: 1, 
                               py: 0.5, 
@@ -586,7 +592,8 @@ const ProjectOrganizationPage = () => {
                       </Box>
                     </Box>
                   )}
-                </Box>
+                  </Box>
+                </>
               ) : (
                 <Typography variant="body2" color="text.secondary">
                   Select a file to view its details
