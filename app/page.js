@@ -690,7 +690,7 @@ const CodeRefactoringInterface = () => {
   const router = useRouter();
   const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', or 'final'
   const [files, setFiles] = useState([
-    { id: 1, name: 'file 1.py', color: 'primary', functions: [], codeBlocks: [], content: '', functionsCode: {} }
+    { id: 1, name: 'file_1.py', color: 'primary', functions: [], codeBlocks: [], content: '', functionsCode: {} }
   ]);
   
   const [selectedFile, setSelectedFile] = useState(1);
@@ -2658,7 +2658,7 @@ if __name__ == "__main__":
 
     const newFile = {
       id: Date.now(),
-      name: `file ${files.length + 1}.py`,
+      name: `file_${files.length + 1}.py`,
       color: colors[files.length % colors.length],
       functions: [],
       codeBlocks: [],
@@ -2695,8 +2695,19 @@ if __name__ == "__main__":
   };
 
   const changeFileName = (fileId, newName) => {
+    const trimmedName = newName.trim();
+    
+    // Check for spaces or hyphens in the filename
+    if (trimmedName.includes(' ') || trimmedName.includes('-')) {
+      setErrorDialog({
+        open: true,
+        message: 'Warning: Filenames should not contain spaces or hyphens. Please use underscores instead. For example, use "file_1" instead of "file 1" or "file-1".'
+      });
+      return;
+    }
+    
     // Always append .py extension in lowercase
-    const finalName = newName.trim().toLowerCase() + '.py';
+    const finalName = trimmedName.toLowerCase() + '.py';
     setFiles(files.map(f => f.id === fileId ? { ...f, name: finalName } : f));
     setRenameDialog({ open: false, fileId: null, currentName: '' });
     // Update content with new file name
@@ -3037,6 +3048,15 @@ if __name__ == "__main__":
       // Allow saving with any name (including same name)
       const trimmedName = editingName.trim();
       if (trimmedName.length > 0) {
+        // Check for spaces or hyphens in the filename
+        if (trimmedName.includes(' ') || trimmedName.includes('-')) {
+          setErrorDialog({
+            open: true,
+            message: 'Warning: Filenames should not contain spaces or hyphens. Please use underscores instead. For example, use "file_1" instead of "file 1" or "file-1".'
+          });
+          return;
+        }
+        
         // Always append .py extension in lowercase
         const finalName = trimmedName.toLowerCase() + '.py';
         console.log('Saving file name:', finalName); // Debug log
