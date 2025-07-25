@@ -979,7 +979,7 @@ const CodeRefactoringInterface = () => {
     }
   }, [currentView, customImports, files]);
 
-  // Initialize file locations when organization view loads
+  // Initialize file locations when organization view loads 
   useEffect(() => {
     if (currentView === 'organize' && organizationFiles.length > 0) {
       const initialLocations = updateFileLocations(organizationFiles, folders);
