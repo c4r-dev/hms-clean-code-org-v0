@@ -60,7 +60,7 @@ export default function RootLayout({ children }) {
                   // onLogoClick={handleLogoClick}
                   onHelpClick={handleHelpClick}
                   text="Codebase Organization"
-                />  
+                />   
               </Box>
             </Toolbar>
           </AppBar>
