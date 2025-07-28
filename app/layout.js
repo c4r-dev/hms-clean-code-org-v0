@@ -56,11 +56,11 @@ export default function RootLayout({ children }) {
           >
             <Toolbar sx={{ height: 64 }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Header
+                  {/* <Header
                   // onLogoClick={handleLogoClick}
                   onHelpClick={handleHelpClick}
                   text="Codebase Organization"
-                />  
+                />   */}
               </Box>
             </Toolbar>
           </AppBar>

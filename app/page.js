@@ -44,6 +44,24 @@ import {
   FullscreenExit as FullscreenExitIcon
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
+import CustomModal from './components/CustomModal';
+import hljs from 'highlight.js/lib/core';
+import python from 'highlight.js/lib/languages/python';
+import 'highlight.js/styles/vs2015.css'; // Dark theme that matches the editor
+
+// Register Python language
+hljs.registerLanguage('python', python);
+
+// Function to highlight Python code
+const highlightPythonLine = (line) => {
+  try {
+    const result = hljs.highlight(line, { language: 'python', ignoreIllegals: true });
+    return result.value;
+  } catch (error) {
+    // Fallback to plain text if highlighting fails
+    return line;
+  }
+};
 
 // Custom Python icon component since MUI doesn't have one
 const PythonFileIcon = () => (
@@ -84,6 +102,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
   const [isEditingLine, setIsEditingLine] = useState(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [editingSegment, setEditingSegment] = useState(null);
+  const [tempIdentifierValue, setTempIdentifierValue] = useState('');
   const lines = content.split('\n');
   
   const handleLineEdit = (lineNumber, newValue) => {
@@ -231,7 +250,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
         return (
           <span>
             {beforeLoadFile}
-            <span style={{ color: '#e2e8f0' }}>load_file(f&lt;quot;&gt;</span>
+            <span style={{ color: '#e2e8f0' }}>load_file(f&quot;</span>
             <span
               style={{
                 backgroundColor: 'rgba(255, 215, 0, 0.2)',
@@ -311,7 +330,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
         return (
           <span>
             {beforeLoadFile}
-            <span style={{ color: '#e2e8f0' }}>load_file(f&lt;quot;&gt;</span>
+            <span style={{ color: '#e2e8f0' }}>load_file(f&quot;</span>
             <span
               style={{
                 backgroundColor: 'rgba(255, 215, 0, 0.2)',
@@ -516,8 +535,228 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
           {afterImport}
         </span>
       );
+    } else if (line.includes('output_path=f"') && line.includes('_comparison.png') && isEditableLine(lineNumber)) {
+      // Handle output_path file_identifier editing
+      const beforeIdentifier = line.substring(0, line.indexOf('output_path=f"') + 14); // +14 for 'output_path=f"'
+      const afterIdentifier = '_comparison.png")';
+      
+      // Extract current file_identifier value (everything before _comparison.png)
+      const beforeMatch = line.match(/output_path=f"([^"]*?)_comparison\.png/);
+      let currentIdentifier = beforeMatch ? beforeMatch[1] : '';
+      
+      // If the identifier is a template variable like {file_identifier}, treat it as empty
+      if (currentIdentifier === '{file_identifier}') {
+        currentIdentifier = '';
+      }
+      
+      return (
+        <span>
+          <span dangerouslySetInnerHTML={{ __html: highlightPythonLine(beforeIdentifier) }} />
+          <span
+            style={{
+              backgroundColor: 'rgba(255, 215, 0, 0.2)',
+              color: '#ffd700',
+              padding: '4px 8px',
+              borderRadius: '3px',
+              cursor: 'text',
+              border: '2px solid rgba(255, 215, 0, 0.5)',
+              display: 'inline-block',
+              minWidth: '150px',
+              maxWidth: '300px',
+              minHeight: '20px',
+              lineHeight: '1.2'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingSegment(`${lineNumber}-identifier`);
+              setTempIdentifierValue(currentIdentifier);
+            }}
+            title="Click to edit the file identifier"
+          >
+            {editingSegment === `${lineNumber}-identifier` ? (
+              <input
+                type="text"
+                value={tempIdentifierValue}
+                onChange={(e) => {
+                  setTempIdentifierValue(e.target.value);
+                }}
+                onBlur={() => {
+                  // Apply the change when losing focus
+                  const beforeOutput = line.substring(0, line.indexOf('output_path=f"'));
+                  const updatedLine = `${beforeOutput}output_path=f"${tempIdentifierValue}_comparison.png")`;
+                  const updatedLines = [...lines];
+                  updatedLines[lineNumber] = updatedLine;
+                  onChange(updatedLines.join('\n'));
+                  setEditingSegment(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    // Apply the change when pressing Enter/Escape
+                    const beforeOutput = line.substring(0, line.indexOf('output_path=f"'));
+                    const updatedLine = `${beforeOutput}output_path=f"${tempIdentifierValue}_comparison.png")`;
+                    const updatedLines = [...lines];
+                    updatedLines[lineNumber] = updatedLine;
+                    onChange(updatedLines.join('\n'));
+                    setEditingSegment(null);
+                  }
+                }}
+                autoFocus
+                placeholder="prefix"
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#ffd700',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  width: '100%',
+                  minWidth: '120px'
+                }}
+              />
+            ) : (
+              <span>
+                {currentIdentifier || (
+                  <span style={{ 
+                    color: 'rgba(255, 215, 0, 0.5)',
+                    fontStyle: 'italic'
+                  }}>
+                    {(() => {
+                      try {
+                        // Find where sub-11-YAaLR_ophys_comparison.png should be located
+                        if (typeof organizationFiles !== 'undefined' && typeof folders !== 'undefined') {
+                          const comparisonFile = organizationFiles?.find(f => f.name === 'sub-11-YAaLR_ophys_comparison.png');
+                          let folderPath = 'results'; // default
+                          
+                          if (comparisonFile && comparisonFile.folder) {
+                            const folder = folders?.find(f => f.id === comparisonFile.folder);
+                            folderPath = folder ? folder.name : 'results';
+                          }
+                          
+                          return `${folderPath}/sub-11-YAaLR_ophys`;
+                        }
+                      } catch (error) {
+                        // Fallback if organizationFiles/folders not available
+                      }
+                      return 'results/sub-11-YAaLR_ophys';
+                    })()}
+                  </span>
+                )}
+              </span>
+            )}
+          </span>
+          <span dangerouslySetInnerHTML={{ __html: highlightPythonLine(afterIdentifier) }} />
+        </span>
+      );
+    } else if (line.includes('output_path=f"') && line.includes('.png")') && !line.includes('_comparison.png') && isEditableLine(lineNumber)) {
+      // Handle overview.png output_path editing
+      const beforeOutput = line.substring(0, line.indexOf('output_path=f"') + 14); // +14 for 'output_path=f"'
+      const afterOutput = line.substring(line.indexOf('")')); // Get the closing part
+      
+      // Extract current filename
+      const filenameMatch = line.match(/output_path=f"([^"]+)"/);
+      const currentFilename = filenameMatch ? filenameMatch[1] : 'overview.png';
+      
+      return (
+        <span>
+          <span dangerouslySetInnerHTML={{ __html: highlightPythonLine(beforeOutput) }} />
+          <span
+            style={{
+              backgroundColor: 'rgba(33, 150, 243, 0.2)',
+              color: '#2196F3',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              cursor: 'text',
+              border: '2px solid rgba(33, 150, 243, 0.5)',
+              display: 'inline-block',
+              minWidth: '150px',
+              maxWidth: '350px'
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingSegment(`${lineNumber}-overview`);
+              setTempIdentifierValue(currentFilename);
+            }}
+            title="Click to edit the output filename"
+          >
+            {editingSegment === `${lineNumber}-overview` ? (
+              <input
+                type="text"
+                value={tempIdentifierValue}
+                onChange={(e) => {
+                  setTempIdentifierValue(e.target.value);
+                }}
+                onBlur={() => {
+                  // Apply the change when losing focus
+                  const beforePart = line.substring(0, line.indexOf('output_path=f"'));
+                  const updatedLine = `${beforePart}output_path=f"${tempIdentifierValue}")`;
+                  const updatedLines = [...lines];
+                  updatedLines[lineNumber] = updatedLine;
+                  onChange(updatedLines.join('\n'));
+                  setEditingSegment(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === 'Escape') {
+                    // Apply the change when pressing Enter/Escape
+                    const beforePart = line.substring(0, line.indexOf('output_path=f"'));
+                    const updatedLine = `${beforePart}output_path=f"${tempIdentifierValue}")`;
+                    const updatedLines = [...lines];
+                    updatedLines[lineNumber] = updatedLine;
+                    onChange(updatedLines.join('\n'));
+                    setEditingSegment(null);
+                  }
+                }}
+                autoFocus
+                placeholder="filename.png"
+                style={{
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  outline: 'none',
+                  color: '#2196F3',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8rem',
+                  width: '100%',
+                  minWidth: '120px'
+                }}
+              />
+            ) : (
+              <span>
+                {currentFilename === 'overview.png' ? (
+                  <span style={{ 
+                    color: 'rgba(33, 150, 243, 0.7)',
+                    fontStyle: 'italic'
+                  }}>
+                    {(() => {
+                      try {
+                        // Find where overview.png should be located
+                        if (typeof organizationFiles !== 'undefined' && typeof folders !== 'undefined') {
+                          const overviewFile = organizationFiles?.find(f => f.name === 'overview.png');
+                          let folderPath = 'results'; // default
+                          
+                          if (overviewFile && overviewFile.folder) {
+                            const folder = folders?.find(f => f.id === overviewFile.folder);
+                            folderPath = folder ? folder.name : 'results';
+                          }
+                          
+                          return `${folderPath}/overview.png`;
+                        }
+                      } catch (error) {
+                        // Fallback if organizationFiles/folders not available
+                      }
+                      return 'results/overview.png';
+                    })()}
+                  </span>
+                ) : (
+                  currentFilename
+                )}
+              </span>
+            )}
+          </span>
+          <span dangerouslySetInnerHTML={{ __html: highlightPythonLine(afterOutput) }} />
+        </span>
+      );
     }
-    return line;
+    // Apply syntax highlighting to regular Python code lines
+    return <span dangerouslySetInnerHTML={{ __html: highlightPythonLine(line) }} />;
   };
   
   const handleLineClick = (lineNumber) => {
@@ -571,7 +810,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
           right: 0,
           minHeight: '100%'
         }}>
-          {Array.from({length: Math.max(lines.length, 250)}, (_, index) => (
+          {Array.from({length: lines.length}, (_, index) => (
             <div 
               key={index}
               style={{ 
@@ -579,28 +818,15 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-end',
-                color: isEditableLine(index) ? '#ffd700' : '#a0aec0',
-                fontWeight: isEditableLine(index) ? 'bold' : 'normal',
+                color: '#a0aec0',
+                fontWeight: 'normal',
                 fontSize: '0.8rem',
                 fontFamily: 'monospace',
                 lineHeight: '1.5',
-                backgroundColor: isEditableLine(index) ? 'rgba(255, 215, 0, 0.1)' : 'transparent'
+                backgroundColor: 'transparent'
               }}
             >
               {String(index + 1).padStart(3, ' ')}
-              {isEditableLine(index) && (
-                <Box
-                  component="span"
-                  sx={{
-                    ml: 0.5,
-                    color: '#ffd700',
-                    fontSize: '0.6rem',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  ✎
-                </Box>
-              )}
             </div>
           ))}
         </Box>
@@ -609,7 +835,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
       {/* Code Content Container */}
       <Box sx={{ flex: 1, position: 'relative', overflow: 'auto' }} onScroll={handleScroll}>
         <Box sx={{ padding: '8px 12px' }}>
-          {Array.from({length: Math.max(lines.length, 250)}, (_, index) => {
+          {Array.from({length: lines.length}, (_, index) => {
             const line = index < lines.length ? lines[index] : '';
             return (
             <div
@@ -688,7 +914,7 @@ const EnhancedCodeEditor = ({ content, onChange, disabled, editableLines }) => {
 
 const CodeRefactoringInterface = () => {
   const router = useRouter();
-  const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', or 'final'
+  const [currentView, setCurrentView] = useState('refactoring'); // 'refactoring', 'organize', 'final', or 'completion'
   const [files, setFiles] = useState([
     { id: 1, name: 'file_1.py', color: 'purple', functions: [], codeBlocks: [], content: '', functionsCode: {} }
   ]);
@@ -725,6 +951,9 @@ const CodeRefactoringInterface = () => {
 
   // Final view state
   const [finalView, setFinalView] = useState('directory'); // 'directory' or 'main'
+  
+  // Completion view state
+  const [completionView, setCompletionView] = useState('project'); // 'project', 'example'
   const [mainPyContent, setMainPyContent] = useState('');
   const [isMainPyEditable, setIsMainPyEditable] = useState(true);
 
@@ -751,15 +980,26 @@ const CodeRefactoringInterface = () => {
   // Track if component is mounted to prevent hydration errors
   const [isMounted, setIsMounted] = useState(false);
 
-  // Import management state
-  const [customImports, setCustomImports] = useState([]);
-  const [newImportModule, setNewImportModule] = useState('');
-  const [newImportItems, setNewImportItems] = useState('');
+  // Import lines state (now managed directly in the script)
+  const [importLines, setImportLines] = useState([
+    { line: 7, content: 'from  import ' }
+  ]);
 
   // Validation state
   const [validationResults, setValidationResults] = useState(null);
   const [showValidation, setShowValidation] = useState(false);
   const [expandedValidation, setExpandedValidation] = useState(false);
+  const [showValidationPopup, setShowValidationPopup] = useState(false);
+
+  // Handle NEXT button click
+  const handleNextClick = () => {
+    if (validationResults && !validationResults.isValid) {
+      setShowValidationPopup(true);
+    } else {
+      // Proceed to completion screen when validation passes
+      setCurrentView('completion');
+    }
+  };
 
   // All useEffect hooks must be at the top, before any conditional logic
   
@@ -962,12 +1202,9 @@ const CodeRefactoringInterface = () => {
       const newMainContent = generateMainPyContentWithEditableLines();
       setMainPyContent(newMainContent);
       
-             // Auto-run validation after a delay to provide immediate feedback
-       setTimeout(() => {
-         validateImportsAndStructure();
-       }, 1500);
+      // Validation will be triggered automatically by the useEffect hooks
     }
-  }, [currentView, customImports, files]);
+  }, [currentView, files]);
 
   // Initialize file locations when organization view loads 
   useEffect(() => {
@@ -992,7 +1229,30 @@ const CodeRefactoringInterface = () => {
       const newContent = generateMainPyContentWithEditableLines(mainPyContent);
       setMainPyContent(newContent);
     }
-  }, [customImports, files]);  // Regenerate when imports or files change
+  }, [files]);  // Regenerate when files change
+
+  // Auto-validate when script content changes
+  useEffect(() => {
+    if (currentView === 'final' && mainPyContent) {
+      const timeoutId = setTimeout(() => {
+        validateImportsAndStructure();
+      }, 500); // Debounce validation to avoid excessive calls
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [mainPyContent, currentView]);
+
+
+  // Auto-validate when file organization changes
+  useEffect(() => {
+    if (currentView === 'final' && organizationFiles && folders) {
+      const timeoutId = setTimeout(() => {
+        validateImportsAndStructure();
+      }, 300);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [organizationFiles, folders, currentView]);
 
   // Function to parse code into function blocks
   const parseFunctionBlocks = (code) => {
@@ -1430,33 +1690,6 @@ if __name__ == "__main__":
     return path || '/';
   };
 
-  // Import management functions
-  const addNewImport = () => {
-    const newImport = {
-      id: Date.now(),
-      module: newImportModule.trim(),
-      items: newImportItems.trim()
-    };
-    setCustomImports(prev => [...prev, newImport]);
-    
-    // Clear the form fields
-    setNewImportModule('');
-    setNewImportItems('');
-  };
-
-  const removeImport = (importId) => {
-    setCustomImports(prev => prev.filter(imp => imp.id !== importId));
-  };
-
-
-
-  const updateImport = (importId, field, value) => {
-    setCustomImports(prev =>
-      prev.map(imp =>
-        imp.id === importId ? { ...imp, [field]: value } : imp
-      )
-    );
-  };
 
   // File structure export function (moved up to avoid hoisting issues)
   const exportFileStructure = () => {
@@ -1589,7 +1822,7 @@ if __name__ == "__main__":
         } else if (!hasIndividualPaths && pathPrefix.trim() === '') {
           // Neither approach is being used
           validation.isValid = false;
-          validation.errors.push(`All data files are in "${folderName}" folder. Choose one approach: either fill path prefix with "${expectedPrefix}" OR add "${folderName}/" (or "${folderName}\\") before each filename.`);
+          validation.errors.push(`❌ All data files are in "${folderName}" folder. Choose one approach: either fill path prefix with "${expectedPrefix}" OR add "${folderName}/" (or "${folderName}\\") before each filename.`);
         }
       } else {
         // Data files in DIFFERENT folders - must use individual paths approach
@@ -1639,7 +1872,58 @@ if __name__ == "__main__":
     let filesInFolders = [];
 
     try {
-      // First, validate data file paths consistency
+      // First, validate the complete output_path line for comparison file
+      const lines = mainPyContent.split('\n');
+      const outputPathLine = lines.find(line => line.includes('output_path=f"') && line.includes('_comparison.png'));
+      if (outputPathLine) {
+        // Find where sub-11-YAaLR_ophys_comparison.png is located in the project structure
+        const comparisonFile = organizationFiles.find(f => f.name === 'sub-11-YAaLR_ophys_comparison.png');
+        let expectedFolderPath = 'results'; // default
+        
+        if (comparisonFile && comparisonFile.folder) {
+          // Find the folder name
+          const folder = folders.find(f => f.id === comparisonFile.folder);
+          expectedFolderPath = folder ? folder.name : 'results';
+        }
+        
+        const expectedLine = `            output_path=f"${expectedFolderPath}/sub-11-YAaLR_ophys_comparison.png")`;
+        if (outputPathLine.trim() !== expectedLine.trim()) {
+          results.isValid = false;
+          results.errors.push(`❌ Output path line must be exactly "${expectedLine}" but found "${outputPathLine.trim()}"`);
+          results.errors.push(`💡 The file identifier should be "${expectedFolderPath}/sub-11-YAaLR_ophys" (click the yellow area on line 200 to edit)`);
+        } else {
+          results.successes.push(`✓ Output path line is correctly set to "${expectedLine}"`);
+        }
+      }
+
+      // Validate overview filename in output_path
+      const overviewLine = lines.find(line => line.includes('output_path=f"') && line.includes('.png")') && !line.includes('_comparison.png'));
+      if (overviewLine) {
+        // Find where overview.png is located in the project structure
+        const overviewFile = organizationFiles.find(f => f.name === 'overview.png');
+        let expectedOverviewFolderPath = 'results'; // default
+        
+        if (overviewFile && overviewFile.folder) {
+          // Find the folder name
+          const folder = folders.find(f => f.id === overviewFile.folder);
+          expectedOverviewFolderPath = folder ? folder.name : 'results';
+        }
+        
+        const overviewMatch = overviewLine.match(/output_path=f"([^"]+)"/);
+        if (overviewMatch) {
+          const currentOverviewPath = overviewMatch[1];
+          const expectedOverviewPath = `${expectedOverviewFolderPath}/overview.png`;
+          if (currentOverviewPath !== expectedOverviewPath) {
+            results.isValid = false;
+            results.errors.push(`❌ Overview output path must be exactly "${expectedOverviewPath}" but found "${currentOverviewPath}"`);
+            results.errors.push(`💡 The overview filename should be "${expectedOverviewPath}" (click the blue highlighted filename on line 206 to edit)`);
+          } else {
+            results.successes.push(`✓ Overview output path is correctly set to "${expectedOverviewPath}"`);
+          }
+        }
+      }
+
+      // Next, validate data file paths consistency
       const dataFileValidation = validateDataFilePaths();
       if (!dataFileValidation.isValid) {
         results.isValid = false;
@@ -1669,16 +1953,27 @@ if __name__ == "__main__":
         return results;
       }
 
-      // Get all imported file names from custom import statements
+      // Get all imported file names from the script content
       const importedFiles = new Set();
-      customImports
-        .filter(imp => imp.module && imp.items) // Only check if both module and items are filled
-        .filter(imp => !['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(imp.module))
-        .forEach(imp => {
-          // Split items by comma and clean up whitespace
-          const items = imp.items.split(',').map(item => item.trim()).filter(item => item);
-          items.forEach(item => importedFiles.add(item));
-        });
+      const scriptLines = mainPyContent.split('\n');
+      
+      scriptLines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('from ') && trimmedLine.includes(' import ')) {
+          const match = trimmedLine.match(/from\s+([^\s]+)\s+import\s+(.+)/);
+          if (match) {
+            const module = match[1].trim();
+            const items = match[2].trim();
+            
+            // Skip standard library imports
+            if (!['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(module)) {
+              // Split items by comma and clean up whitespace
+              const itemsList = items.split(',').map(item => item.trim()).filter(item => item);
+              itemsList.forEach(item => importedFiles.add(item));
+            }
+          }
+        }
+      });
 
       // Check each file in folders
       missingFiles = []; // Reset the array
@@ -1704,7 +1999,11 @@ if __name__ == "__main__":
         results.successes.push(`📁 Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
         results.successes.push(`ℹ️ Other file types (images, text files, etc.) are optional and don't need to be imported.`);
       } else {
-        results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} Python files are missing from import statements`);
+        if (missingFiles.length > 0) {
+          results.errors.push(`❌ ${missingFiles.length} out of ${filesInFolders.length} Python files are missing from import statements`);
+        } else {
+          results.errors.push(`${missingFiles.length} out of ${filesInFolders.length} Python files are missing from import statements`);
+        }
         results.errors.push(`📁 Note: Data files (.nd2, .nwb, .tif) are validated separately via path prefix/filename validation.`);
         results.errors.push(`ℹ️ Other file types (images, text files, etc.) are optional and don't need to be imported.`);
       }
@@ -1791,15 +2090,12 @@ if __name__ == "__main__":
     // Add initial imports (lines 0-5)
     mainContent += lines.slice(0, 6).join('\n') + '\n';
     
-    // Add editable lines 6-7 (existing import lines)
+    // Add initial import line (tifffile import)
     mainContent += (lines[6] || 'from tifffile import imread') + '\n';
-    mainContent += (lines[7] || ' ') + '\n';
     
-    // Add custom imports from the Import Manager
-    customImports.forEach(imp => {
-      if (imp.module.trim() && imp.items.trim()) {
-        mainContent += `from ${imp.module} import ${imp.items}\n`;
-      }
+    // Add editable import lines
+    importLines.forEach(importLine => {
+      mainContent += importLine.content + '\n';
     });
     
     // Add a blank line after custom imports
@@ -1899,6 +2195,422 @@ if __name__ == "__main__":
     return mainContent;
   };
 
+  // Render completion view
+  if (currentView === 'completion') {
+    return (
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3, bgcolor: 'grey.100', minHeight: '100vh' }}>
+        {/* Header */}
+        <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'grey.300' }}>
+          <Typography variant="h5" component="h1" gutterBottom fontWeight="bold">
+            Codebase Organization
+          </Typography>
+          <Typography variant="body1" sx={{ mt: 2, color: 'text.primary', fontSize: '1.1rem' }}>
+            Well done! You've successfully organized your project in a way that makes it 
+            intuitive and easy to browse. Look through the new PY files.
+          </Typography>
+        </Paper>
+
+        {/* Tab Navigation */}
+        <Box sx={{ mb: 3 }}>
+          <Button
+            variant={completionView === 'project' ? 'contained' : 'outlined'}
+            onClick={() => setCompletionView('project')}
+            sx={{ 
+              mr: 2,
+              bgcolor: completionView === 'project' ? 'black' : 'grey.600',
+              color: 'white',
+              borderColor: completionView === 'project' ? 'black' : 'grey.600',
+              '&:hover': {
+                bgcolor: '#6e00ff'
+              }
+            }}
+          >
+            PROJECT DIRECTORY
+          </Button>
+          <Button
+            variant={completionView === 'example' ? 'contained' : 'outlined'}
+            onClick={() => setCompletionView('example')}
+            sx={{ 
+              mr: 2,
+              bgcolor: completionView === 'example' ? 'black' : 'grey.600',
+              color: 'white',
+              borderColor: completionView === 'example' ? 'black' : 'grey.600',
+              '&:hover': {
+                bgcolor: '#6e00ff'
+              }
+            }}
+          >
+            EXAMPLE DIRECTORY
+          </Button>
+        </Box>
+
+        {/* File Directory Display */}
+        <Paper elevation={2} sx={{ bgcolor: 'grey.800', color: 'white' }}>
+          <Box sx={{ p: 2, bgcolor: 'black', color: 'white' }}>
+            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 'bold' }}>
+              {completionView === 'project' ? 'PROJECT DIRECTORY' : 'EXAMPLE DIRECTORY'}
+            </Typography>
+          </Box>
+          
+          {/* Project Directory Content */}
+          {completionView === 'project' && (
+            <>
+              {/* Column Headers */}
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                px: 3,
+                py: 2,
+                bgcolor: 'grey.600',
+                borderBottom: '1px solid rgba(255,255,255,0.1)'
+              }}>
+            <Typography variant="body1" sx={{ 
+              color: 'white', 
+              fontWeight: 'bold',
+              fontSize: '1rem'
+            }}>
+              Name
+            </Typography>
+            <Typography variant="body1" sx={{ 
+              color: 'white', 
+              fontWeight: 'bold',
+              fontSize: '1rem'
+            }}>
+              File Type
+            </Typography>
+          </Box>
+          
+          {/* File List */}
+          <Box sx={{ bgcolor: 'grey.700', minHeight: 400, p: 3 }}>
+            {/* Show main.py first */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              py: 1,
+              px: 2,
+              mb: 1,
+              bgcolor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: 1
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <PythonFileIcon />
+                <Typography variant="body1" sx={{ ml: 2, color: 'white', fontWeight: 'bold' }}>
+                  main.py
+                </Typography>
+              </Box>
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                PY File
+              </Typography>
+            </Box>
+
+            {/* Show organized folders and files */}
+            {folders.map(folder => (
+              <Box key={folder.id} sx={{ mb: 2 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  py: 1,
+                  px: 2,
+                  mb: 1,
+                  bgcolor: 'rgba(255, 215, 0, 0.1)',
+                  borderRadius: 1
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <FolderIcon sx={{ color: '#FFD700', mr: 2 }} />
+                    <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                      {folder.name}/
+                    </Typography>
+                  </Box>
+                  <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                    Folder
+                  </Typography>
+                </Box>
+                
+                {/* Files in folder */}
+                {organizationFiles.filter(f => f.folder === folder.id).map(file => (
+                  <Box key={file.id} sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    py: 1,
+                    px: 2,
+                    ml: 4,
+                    mb: 1,
+                    bgcolor: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: 1
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      {getFileIcon(file.type)}
+                      <Typography variant="body1" sx={{ ml: 2, color: 'white' }}>
+                        {file.name}
+                      </Typography>
+                    </Box>
+                    <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                      {getFileTypeLabel(file.type)}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            ))}
+
+            {/* Show root files (excluding main.py) */}
+            {organizationFiles.filter(f => f.id !== 'main' && !f.folder).map(file => (
+              <Box key={file.id} sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                py: 1,
+                px: 2,
+                mb: 1,
+                bgcolor: 'rgba(255, 255, 255, 0.05)',
+                borderRadius: 1
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  {getFileIcon(file.type)}
+                  <Typography variant="body1" sx={{ ml: 2, color: 'white' }}>
+                    {file.name}
+                  </Typography>
+                </Box>
+                <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                  {getFileTypeLabel(file.type)}
+                </Typography>
+              </Box>
+            ))}
+
+            {/* Show some example files to fill out the directory */}
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              py: 1,
+              px: 2,
+              mb: 1,
+              bgcolor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: 1
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <InsertDriveFileIcon sx={{ color: '#2196F3' }} />
+                <Typography variant="body1" sx={{ ml: 2, color: 'white' }}>
+                  __init__.py
+                </Typography>
+              </Box>
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                PY File
+              </Typography>
+            </Box>
+
+            <Box sx={{ 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              py: 1,
+              px: 2,
+              mb: 1,
+              bgcolor: 'rgba(255, 255, 255, 0.05)',
+              borderRadius: 1
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Typography variant="body1" sx={{ ml: 2, color: 'rgba(255,255,255,0.6)' }}>
+                  etc.
+                </Typography>
+              </Box>
+              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.6)' }}>
+                etc.
+              </Typography>
+            </Box>
+          </Box>
+            </>
+          )}
+
+          {/* Example Directory Content */}
+          {completionView === 'example' && (
+            <Box sx={{ p: 3 }}>
+              {/* main.py at root level */}
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                py: 1,
+                mb: 2
+              }}>
+                <Box sx={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: '#306998',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                  mr: 2
+                }}>
+                  PY
+                </Box>
+                <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                  main.py
+                </Typography>
+              </Box>
+
+              {/* data folder */}
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  py: 1,
+                  mb: 1
+                }}>
+                  <FolderIcon sx={{ color: '#FFD700', mr: 2 }} />
+                  <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    data/
+                  </Typography>
+                </Box>
+                
+                {/* data folder files */}
+                <Box sx={{ ml: 4 }}>
+                  {[
+                    { name: '20191010_tail_01.nd2', color: '#4CAF50' },
+                    { name: '20191010_tail_01.qpdata', color: '#4CAF50' },
+                    { name: '20240523_Vang-1_37.tif', color: '#4CAF50' },
+                    { name: 'citations.txt', color: '#4CAF50' }
+                  ].map((file, index) => (
+                    <Box key={index} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      py: 0.5,
+                      ml: 2
+                    }}>
+                      <InsertDriveFileIcon sx={{ color: file.color, mr: 2, fontSize: '1.2rem' }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                        {file.name}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* src folder */}
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  py: 1,
+                  mb: 1
+                }}>
+                  <FolderIcon sx={{ color: '#FFD700', mr: 2 }} />
+                  <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    src/
+                  </Typography>
+                </Box>
+                
+                {/* src folder files */}
+                <Box sx={{ ml: 4 }}>
+                  {[
+                    'loading.py',
+                    'plotting.py', 
+                    'preprocessing.py'
+                  ].map((file, index) => (
+                    <Box key={index} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      py: 0.5,
+                      ml: 2
+                    }}>
+                      <Box sx={{ 
+                        width: 20, 
+                        height: 20, 
+                        backgroundColor: '#306998',
+                        borderRadius: '3px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        mr: 2
+                      }}>
+                        PY
+                      </Box>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                        {file}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* results folder */}
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  py: 1,
+                  mb: 1
+                }}>
+                  <FolderIcon sx={{ color: '#FFD700', mr: 2 }} />
+                  <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                    results/
+                  </Typography>
+                </Box>
+                
+                {/* results folder files */}
+                <Box sx={{ ml: 4 }}>
+                  {[
+                    '20191010_tail_01_comparison.png',
+                    '20240523_Vang-1_37_comparison.png',
+                    'overview.png',
+                    'sub-11-YAaLR_ophys_comparison.png'
+                  ].map((file, index) => (
+                    <Box key={index} sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      py: 0.5,
+                      ml: 2
+                    }}>
+                      <ImageIcon sx={{ color: '#4CAF50', mr: 2, fontSize: '1.2rem' }} />
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                        {file}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+
+        {/* Bottom Navigation */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+          
+          <Button
+            variant="contained"
+            sx={{ 
+              bgcolor: 'black',
+              color: 'white',
+              '&:hover': { 
+                bgcolor: '#6e00ff' 
+              },
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              px: 4,
+              py: 1.5
+            }}
+            onClick={() => {
+              // Handle finish activity - could navigate away or show completion message
+              console.log('Activity completed!');
+              alert('Congratulations! You have successfully completed the codebase organization activity.');
+            }}
+          >
+            FINISH ACTIVITY
+          </Button>
+        </Box>
+      </Box>
+    );
+  }
+
   // Render final view
   if (currentView === 'final') {
     return (
@@ -1912,6 +2624,14 @@ if __name__ == "__main__":
             Some of the changes you&apos;ve made require that you update main.py to ensure that 
             any imports and file paths reflect your new directory structure. This is okay, and a{' '}
             <strong>totally normal part of refactoring!</strong> Click into the main.py tab to update the script.
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 1.5, color: 'text.secondary' }}>
+            💡 Additional editable sections:<br />
+            • Import statement: Click the highlighted import line to add your imports<br />
+            • Files array: Click the blue highlighted filenames to edit them<br />
+            • Load file line: Click the highlighted path area to add a folder path (e.g., "data\") before the filename<br />
+            • Output file name: Click the highlighted prefix area to customize the output filename<br />
+            • Overview filename: Click the blue highlighted filename to change the overview output name
           </Typography>
         </Paper>
 
@@ -2065,226 +2785,10 @@ if __name__ == "__main__":
                 </Typography>
               </Box>
               
-              {/* Import Manager Section */}
-              <Box sx={{ 
-                p: 1.5, 
-                bgcolor: 'rgba(33, 150, 243, 0.1)', 
-                borderLeft: '3px solid #2196F3',
-                mb: 1.5
-              }}>
-                <Typography variant="subtitle1" sx={{ color: '#2196F3', fontWeight: 'bold', mb: 1.5, fontSize: '0.95rem' }}>
-                  📦 Import Manager
-                </Typography>
-                
-                {/* Current Imports */}
-                <Box sx={{ mb: 1.5 }}>
-                  <Typography variant="body2" sx={{ color: '#2196F3', mb: 1, fontSize: '0.85rem', fontWeight: 'bold' }}>
-                    Current Import Statements (for Python files):
-                  </Typography>
-                  
-                                     {customImports.map((imp, index) => (
-                     <Box key={imp.id} sx={{ 
-                       display: 'flex', 
-                       alignItems: 'center', 
-                       gap: 0.8, 
-                       mb: 0.8,
-                       p: 0.8,
-                       bgcolor: 'rgba(255, 255, 255, 0.1)',
-                       borderRadius: 0.5,
-                       border: '1px solid #64748b'
-                     }}>
-                      <Typography variant="body2" sx={{ color: 'white', minWidth: '30px', fontSize: '0.8rem' }}>
-                        {index + 7}:
-                      </Typography>
-                      
-                      <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
-                        from
-                      </Typography>
-                      
-                      <TextField
-                        value={imp.module}
-                        onChange={(e) => updateImport(imp.id, 'module', e.target.value)}
-                        placeholder="module_name"
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                          minWidth: '100px',
-                          '& .MuiOutlinedInput-root': {
-                            bgcolor: 'rgba(255, 255, 255, 0.1)',
-                            color: '#ffd700',
-                            fontSize: '0.75rem',
-                            height: '32px',
-                            '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
-                            '&:hover fieldset': { borderColor: '#ffd700' },
-                            '&.Mui-focused fieldset': { borderColor: '#ffd700' }
-                          },
-                          '& .MuiInputBase-input': { color: '#ffd700', padding: '6px 8px' }
-                        }}
-                      />
-                      
-                      <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
-                        import
-                      </Typography>
-                      
-                      <TextField
-                        value={imp.items}
-                        onChange={(e) => updateImport(imp.id, 'items', e.target.value)}
-                        placeholder="function1, function2"
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                          minWidth: '140px',
-                          '& .MuiOutlinedInput-root': {
-                            bgcolor: 'rgba(255, 255, 255, 0.1)',
-                            color: '#ffd700',
-                            fontSize: '0.75rem',
-                            height: '32px',
-                            '& fieldset': { borderColor: 'rgba(255, 215, 0, 0.5)' },
-                            '&:hover fieldset': { borderColor: '#ffd700' },
-                            '&.Mui-focused fieldset': { borderColor: '#ffd700' }
-                          },
-                          '& .MuiInputBase-input': { color: '#ffd700', padding: '6px 8px' }
-                        }}
-                      />
-                      
-                      
-                      
-                      <IconButton
-                        onClick={() => removeImport(imp.id)}
-                        size="small"
-                        sx={{ 
-                          color: '#f44336',
-                          '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.1)' }
-                        }}
-                        title="Remove import"
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  ))}
-                </Box>
-                
-                {/* Add New Import */}
-                <Box sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: 0.8,
-                  p: 1.2,
-                  bgcolor: 'rgba(76, 175, 80, 0.1)',
-                  borderRadius: 0.5,
-                  border: '1px dashed #4CAF50'
-                }}>
-                  <Typography variant="body2" sx={{ color: '#4CAF50', fontWeight: 'bold', fontSize: '0.8rem' }}>
-                    Add:
-                  </Typography>
-                  
-                  <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
-                    from
-                  </Typography>
-                  
-                  <TextField
-                    value={newImportModule}
-                    onChange={(e) => setNewImportModule(e.target.value)}
-                    placeholder="module_name"
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      minWidth: '100px',
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'rgba(255, 255, 255, 0.1)',
-                        color: '#4CAF50',
-                        fontSize: '0.75rem',
-                        height: '32px',
-                        '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
-                        '&:hover fieldset': { borderColor: '#4CAF50' },
-                        '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
-                      },
-                      '& .MuiInputBase-input': { color: '#4CAF50', padding: '6px 8px' }
-                    }}
-                  />
-                  
-                  <Typography variant="body2" sx={{ color: '#e2e8f0', fontSize: '0.8rem' }}>
-                    import
-                  </Typography>
-                  
-                  <TextField
-                    value={newImportItems}
-                    onChange={(e) => setNewImportItems(e.target.value)}
-                    placeholder="function1, function2"
-                    size="small"
-                    variant="outlined"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        addNewImport();
-                      }
-                    }}
-                    sx={{
-                      minWidth: '140px',
-                      '& .MuiOutlinedInput-root': {
-                        bgcolor: 'rgba(255, 255, 255, 0.1)',
-                        color: '#4CAF50',
-                        fontSize: '0.75rem',
-                        height: '32px',
-                        '& fieldset': { borderColor: 'rgba(76, 175, 80, 0.5)' },
-                        '&:hover fieldset': { borderColor: '#4CAF50' },
-                        '&.Mui-focused fieldset': { borderColor: '#4CAF50' }
-                      },
-                      '& .MuiInputBase-input': { color: '#4CAF50', padding: '6px 8px' }
-                    }}
-                  />
-                  
-                                     <Button
-                     onClick={addNewImport}
-                     variant="contained"
-                     size="small"
-                     disabled={!newImportModule.trim() || !newImportItems.trim()}
-                     sx={{
-                       bgcolor: '#4CAF50',
-                       fontSize: '0.75rem',
-                       height: '32px',
-                       minWidth: '80px',
-                       '&:hover': { bgcolor: '#45a049' },
-                       '&:disabled': { bgcolor: 'rgba(76, 175, 80, 0.3)' }
-                     }}
-                   >
-                     ADD IMPORT
-                   </Button>
-                 </Box>
-                 
-                 {/* Validation Section */}
-                 <Box sx={{ 
-                   display: 'flex', 
-                   justifyContent: 'space-between',
-                   alignItems: 'center',
-                   mt: 1.5,
-                   pt: 1.5,
-                   borderTop: '1px solid rgba(255, 255, 255, 0.2)'
-                 }}>
-                   <Typography variant="body2" sx={{ color: '#2196F3', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                     🔍 Validate Imports & File Paths
-                   </Typography>
-                   
-                   <Button
-                     onClick={validateImportsAndStructure}
-                     variant="contained"
-                     size="small"
-                     sx={{
-                       bgcolor: '#FF9800',
-                       color: 'white',
-                       fontWeight: 'bold',
-                       fontSize: '0.75rem',
-                       height: '32px',
-                       '&:hover': { bgcolor: '#F57C00' }
-                     }}
-                                        >
-                       VALIDATE IMPORTS & FILE PATHS
-                     </Button>
-                 </Box>
-                              </Box>
                
                {/* Validation Results */}
-               {/* Compact Validation Results */}
-               {showValidation && validationResults && (
+               {/* Compact Validation Results - Hidden since popup will be used */}
+               {false && showValidation && validationResults && (
                  <Box sx={{ 
                    p: 1.2, 
                    mb: 1.5,
@@ -2392,22 +2896,6 @@ if __name__ == "__main__":
                )}
                
                {/* Editable Lines Info Banner */}
-              <Box sx={{ 
-                p: 1.2, 
-                bgcolor: 'rgba(255, 215, 0, 0.1)', 
-                borderLeft: '3px solid #ffd700',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 0.8,
-                mb: 1
-              }}>
-                <EditIcon sx={{ color: '#ffd700', fontSize: '1rem' }} />
-                                 <Typography variant="body2" sx={{ color: '#ffd700', fontWeight: 'bold', fontSize: '0.8rem', lineHeight: 1.3 }}>
-                   💡 Additional editable sections:<br />
-                   • Files array: Click the blue highlighted filenames to edit them<br />
-                   • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\\&quot;) before the filename
-                 </Typography>
-              </Box>
 
               {/* Enhanced Code Editor */}
               <Box sx={{ p: 2, bgcolor: 'grey.900' }}>
@@ -2418,6 +2906,9 @@ if __name__ == "__main__":
                   editableLines={(() => {
                     const lines = mainPyContent.split('\n');
                     const editableIndexes = [];
+                    
+                    // Add import line as editable (line 7)
+                    editableIndexes.push(7);
                     
                     // Find line with files array
                     for (let i = 0; i < lines.length; i++) {
@@ -2430,6 +2921,22 @@ if __name__ == "__main__":
                     // Find line with load_file call containing {filename}
                     for (let i = 0; i < lines.length; i++) {
                       if (lines[i].includes('load_file(f"') && lines[i].includes('{filename}')) {
+                        editableIndexes.push(i);
+                        break;
+                      }
+                    }
+                    
+                    // Find line with output_path file_identifier
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].includes('output_path=f"') && lines[i].includes('_comparison.png')) {
+                        editableIndexes.push(i);
+                        break;
+                      }
+                    }
+                    
+                    // Find line with overview.png output_path
+                    for (let i = 0; i < lines.length; i++) {
+                      if (lines[i].includes('output_path=f"') && lines[i].includes('.png")') && !lines[i].includes('_comparison.png')) {
                         editableIndexes.push(i);
                         break;
                       }
@@ -2468,19 +2975,6 @@ if __name__ == "__main__":
               </Box> */}
             </Paper>
             
-            {/* Help Text */}
-            <Paper elevation={1} sx={{ p: 2, bgcolor: 'rgba(255, 192, 203, 0.1)', border: '1px solid rgba(255, 192, 203, 0.3)' }}>
-              <Typography variant="body2" sx={{ color: 'deeppink', fontWeight: 'bold' }}>
-                Student should be able to switch between directory view & main.py at any point. Main.py should be editable.
-                The compact Import Manager allows students to dynamically add, remove, and edit import statements for Python files. 
-                The files array allows students to edit the three data filenames by clicking on the blue highlighted areas.
-                The path prefix area in load_file() is highlighted and editable - click on these areas to modify the code.
-                The validation system only requires Python files to have correct import statements, while data files (.nd2, .nwb, .tif) are validated through correct path prefix/filename usage in the code. Other file types are optional.
-                Advanced validation ensures data file paths are consistent with their folder organization.
-                Validation issues can be expanded/collapsed by clicking the arrow button for detailed error messages.
-                The NEXT button is disabled until all validation issues are resolved.
-              </Typography>
-            </Paper>
           </Box>
         )}
 
@@ -2508,26 +3002,29 @@ if __name__ == "__main__":
           
           <Button
             variant="contained"
-            disabled={validationResults && !validationResults.isValid}
+            onClick={handleNextClick}
             sx={{ 
-              bgcolor: validationResults && !validationResults.isValid ? '#64748b' : 'black',
+              bgcolor: 'black',
               color: 'white',
               '&:hover': { 
-                bgcolor: validationResults && !validationResults.isValid ? '#64748b' : '#6e00ff' 
+                bgcolor: '#6e00ff' 
               },
               '&:active': { 
-                bgcolor: validationResults && !validationResults.isValid ? '#64748b' : '#6e00ff' 
-              },
-              '&:disabled': {
-                bgcolor: '#64748b',
-                color: 'rgba(255, 255, 255, 0.6)'
+                bgcolor: '#6e00ff' 
               }
             }}
-            title={validationResults && !validationResults.isValid ? 'Fix validation issues to continue' : 'Proceed to next step'}
+            title={validationResults && !validationResults.isValid ? 'Click to see validation issues' : 'Proceed to next step'}
           >
             NEXT
           </Button>
         </Box>
+        
+        {/* Validation Issues Popup */}
+        <CustomModal 
+          isOpen={showValidationPopup} 
+          closeModal={() => setShowValidationPopup(false)}
+          hypothesis={validationResults}
+        />
       </Box>
     );
   }
