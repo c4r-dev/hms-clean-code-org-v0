@@ -954,6 +954,8 @@ const CodeRefactoringInterface = () => {
   
   // Completion view state
   const [completionView, setCompletionView] = useState('project'); // 'project', 'example'
+  const [selectedFileForViewing, setSelectedFileForViewing] = useState(null);
+  const [showFileContent, setShowFileContent] = useState(false);
   const [mainPyContent, setMainPyContent] = useState('');
   const [isMainPyEditable, setIsMainPyEditable] = useState(true);
 
@@ -990,6 +992,325 @@ const CodeRefactoringInterface = () => {
   const [showValidation, setShowValidation] = useState(false);
   const [expandedValidation, setExpandedValidation] = useState(false);
   const [showValidationPopup, setShowValidationPopup] = useState(false);
+
+  // Function to get file content and description
+  const getFileContentAndDescription = (fileName, isExample = false) => {
+    if (isExample) {
+      // Example directory file contents
+      switch (fileName) {
+        case 'main.py':
+          return {
+            name: 'main.py',
+            description: 'Main execution script that processes microscopy images through various stages and generates comparison plots.',
+            content: `import os.path
+import numpy as np
+from src import plotting, preprocessing, loading
+
+
+def load_file(path):
+    if path.endswith('.nd2'):
+        microscopy_data = loading.load_nd2(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = loading.load_parameters(file_format='nd2')
+
+    elif path.endswith('.tiff') or path.endswith('.tif'):
+        microscopy_data = loading.load_tif(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = loading.load_parameters(file_format='tiff')
+
+    elif path.endswith('.nwb'):
+        microscopy_data = loading.load_nwb(path)
+        is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma = loading.load_parameters(file_format='nwb')
+
+    else:
+        raise ValueError(f"Unsupported file format: {path}")
+
+    image_parameters = {
+        'is_normalized': is_normalized,
+        'is_mip': is_mip,
+        'is_cropped': is_cropped,
+        'downsampling_factor': zoom_level,
+        'smooth_factor': gaussian_sigma
+    }
+
+    return microscopy_data, image_parameters
+
+
+if __name__ == "__main__":
+    files = ['20191010_tail_01.nd2', '20240523_Vang-1_37.tif', 'sub-11-YAaLR_ophys.nwb']
+
+    processed_images = []
+    for filename in files:
+        image, image_parameters = load_file(f"data/{filename}")
+        processing_steps = {}
+
+        if not image_parameters['is_mip']:
+            image = preprocessing.maximally_project_image(image=image)
+            processing_steps['maximum intensity projection'] = image
+
+        if not image_parameters['is_normalized']:
+            image = preprocessing.normalize_image(image)
+            processing_steps['normalized'] = image
+
+        if not image_parameters['is_cropped']:
+            image = preprocessing.crop_background_border(image=image,
+                                                         background_percentile=98)
+            processing_steps['cropped'] = image
+
+        image = preprocessing.downsample_image(
+            image=image,
+            factor=image_parameters['downsampling_factor'])
+        processing_steps['downsampled'] = image
+
+        image = preprocessing.smooth_image(
+            image=image,
+            factor=image_parameters['smooth_factor'])
+        processing_steps['smoothed'] = image
+
+        file_identifier = filename.split('.')[0]
+        plotting.generate_comparison_plot(
+            generated_images=processing_steps,
+            output_path=f"results/{file_identifier}_comparison.png")
+
+        processed_images.append(image)
+
+    plotting.plot_multiple_files(filenames=files,
+                                 images=processed_images,
+                                 output_path=f"results/overview.png")`
+          };
+        case 'loading.py':
+          return {
+            name: 'loading.py',
+            description: 'Module containing functions to load different microscopy file formats (ND2, TIF, NWB) and their parameters.',
+            content: `from nd2reader import ND2Reader
+from tifffile import imread
+from pynwb import NWBHDF5IO
+import numpy as np
+
+
+def load_tif(file_path):
+    microscopy_volume = imread(file_path)
+    return microscopy_volume
+
+
+def load_nd2(file_path):
+    raw_data = ND2Reader(file_path)
+    microscopy_volume = np.transpose(raw_data, (1, 2, 0))
+
+    return microscopy_volume
+
+
+def load_nwb(file_path):
+    io_obj = NWBHDF5IO(file_path, mode="r")
+    nwb_file = io_obj.read()
+
+    image_data = nwb_file.acquisition['NeuroPALImageRaw'].data[:]
+    rotated_image = np.transpose(image_data, (1, 0, 2, 3))
+
+    rgb_channel_indices = nwb_file.acquisition['NeuroPALImageRaw'].RGBW_channels[:3]
+    microscopy_volume = rotated_image[:, :, :, rgb_channel_indices]
+
+    image_dtype = microscopy_volume.dtype
+    maximum_integer_value = np.iinfo(image_dtype).max
+    microscopy_volume = (microscopy_volume/maximum_integer_value) * 255
+
+    io_obj.close()
+
+    return microscopy_volume
+
+
+def load_parameters(file_format):
+    match file_format:
+        case 'nd2':
+            is_normalized = False
+            is_mip = False
+            is_cropped = False
+            zoom_level = (1, 1)
+            gaussian_sigma = 0
+
+        case 'tif' | 'tiff':
+            is_normalized = False
+            is_mip = True
+            is_cropped = False
+            zoom_level = (0.35, 0.35, 1)
+            gaussian_sigma = 0.3
+
+        case 'nwb':
+            is_normalized = False
+            is_mip = False
+            is_cropped = True
+            zoom_level = (1, 0.75, 1)
+            gaussian_sigma = 0
+
+        case _:
+            raise ValueError("Unknown file format!")
+
+    return is_normalized, is_mip, is_cropped, zoom_level, gaussian_sigma`
+          };
+        case 'plotting.py':
+          return {
+            name: 'plotting.py', 
+            description: 'Module containing functions to generate comparison plots and visualize multiple microscopy images.',
+            content: `import matplotlib.pyplot as plt
+
+
+def generate_comparison_plot(generated_images, output_path):
+    num_images = len(generated_images)
+    fig, axes = plt.subplots(1, num_images, figsize=(4 * num_images, 3))
+
+    current_axes = 0
+    for label, image in generated_images.items():
+        axes[current_axes].imshow(image)
+        axes[current_axes].set_title(label)
+        current_axes += 1
+
+    plt.savefig(output_path)
+
+
+def plot_single_file(image):
+    plt.imshow(image)
+    return
+
+
+def plot_multiple_files(filenames, images, output_path=None):
+    num_images = len(images)
+    fig, axes = plt.subplots(1, num_images, figsize=(4 * num_images, 3))
+
+    for i in range(num_images):
+        filename = filenames[i]
+        image = images[i]
+
+        axes[i].imshow(image)
+        axes[i].set_title(filename)
+
+    if output_path is not None:
+        plt.savefig(output_path)
+
+    plt.show()`
+          };
+        case 'preprocessing.py':
+          return {
+            name: 'preprocessing.py',
+            description: 'Module containing image processing functions like normalization, cropping, downsampling, and smoothing.',
+            content: `import numpy as np
+from scipy.ndimage import zoom, gaussian_filter
+
+
+def maximally_project_image(image):
+    dimensions = np.array(image.shape)
+
+    if len(dimensions) < 4:
+        z_index = np.argmin(dimensions)
+    else:
+        z_index = np.argpartition(dimensions, 1)[1]
+
+    maximum_intensity_projection = np.max(image, axis=z_index)
+    return maximum_intensity_projection
+
+
+def normalize_image(image):
+    lowest_pixel_value = np.min(image)
+    highest_pixel_value = np.max(image)
+
+    pixel_value_range = highest_pixel_value - lowest_pixel_value
+    bottom_capped_image = image - lowest_pixel_value
+
+    normalized_image = bottom_capped_image / pixel_value_range
+    return normalized_image
+
+
+def crop_background_border(image, background_percentile):
+    bg = np.percentile(image, background_percentile)
+    non_bg = image > bg
+
+    row_indices = np.where(non_bg.any(axis=1))[0]
+    col_indices = np.where(non_bg.any(axis=0))[0]
+
+    row_slice = slice(row_indices[0], row_indices[-1] + 1)
+    col_slice = slice(col_indices[0], col_indices[-1] + 1)
+
+    return image[row_slice, col_slice]
+
+
+def downsample_image(image, factor):
+    image = zoom(image, factor)
+    return image
+
+
+def smooth_image(image, factor):
+    image = gaussian_filter(image, sigma=factor)
+    return image`
+          };
+        case '20191010_tail_01.nd2':
+          return {
+            name: '20191010_tail_01.nd2',
+            description: 'A Nikon data file generated by proprietary microscopy software.',
+            content: 'Content not available for this file type.'
+          };
+        case '20191010_tail_01.qpdata':
+          return {
+            name: '20191010_tail_01.qpdata',
+            description: 'A QuPath data file containing image analysis and annotation data.',
+            content: 'Content not available for this file type.'
+          };
+        case '20240523_Vang-1_37.tif':
+          return {
+            name: '20240523_Vang-1_37.tif',
+            description: 'A Tagged Image File featuring a microscopy image. This file was generated using the Fiji image processing package.',
+            content: 'Content not available for this file type.'
+          };
+        case 'citations.txt':
+          return {
+            name: 'citations.txt',
+            description: 'A text file listing three different citations, one for each microscopy image.',
+            content: 'Content not available for this file type.'
+          };
+        case '20191010_tail_01_comparison.png':
+          return {
+            name: '20191010_tail_01_comparison.png',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            content: 'Content not available for this file type.'
+          };
+        case '20240523_Vang-1_37_comparison.png':
+          return {
+            name: '20240523_Vang-1_37_comparison.png',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            content: 'Content not available for this file type.'
+          };
+        case 'overview.png':
+          return {
+            name: 'overview.png',
+            description: 'A chart visualizing three fully processed microscopy images. Generated by main.py.',
+            content: 'Content not available for this file type.'
+          };
+        case 'sub-11-YAaLR_ophys_comparison.png':
+          return {
+            name: 'sub-11-YAaLR_ophys_comparison.png',
+            description: 'A chart visualizing a microscopy image after various processing steps. Generated by main.py.',
+            content: 'Content not available for this file type.'
+          };
+        default:
+          return {
+            name: fileName,
+            description: 'File description not available.',
+            content: 'Content not available for this file type.'
+          };
+      }
+    } else {
+      // Project directory files
+      const file = organizationFiles.find(f => f.name === fileName);
+      if (file) {
+        return {
+          name: file.name,
+          description: file.description || 'No description available.',
+          content: file.content || 'Content not available for this file type.'
+        };
+      }
+      return {
+        name: fileName,
+        description: 'File not found.',
+        content: 'Content not available.'
+      };
+    }
+  };
 
   // Handle NEXT button click
   const handleNextClick = () => {
@@ -1962,11 +2283,11 @@ if __name__ == "__main__":
         if (trimmedLine.startsWith('from ') && trimmedLine.includes(' import ')) {
           const match = trimmedLine.match(/from\s+([^\s]+)\s+import\s+(.+)/);
           if (match) {
-            const module = match[1].trim();
+            const moduleMatch = match[1].trim();
             const items = match[2].trim();
             
             // Skip standard library imports
-            if (!['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(module)) {
+            if (!['tifffile', 'nd2reader', 'pynwb', 'scipy.ndimage', 'matplotlib.pyplot', 'numpy', 'os.path'].includes(moduleMatch)) {
               // Split items by comma and clean up whitespace
               const itemsList = items.split(',').map(item => item.trim()).filter(item => item);
               itemsList.forEach(item => importedFiles.add(item));
@@ -2205,7 +2526,7 @@ if __name__ == "__main__":
             Codebase Organization
           </Typography>
           <Typography variant="body1" sx={{ mt: 2, color: 'text.primary', fontSize: '1.1rem' }}>
-            Well done! You've successfully organized your project in a way that makes it 
+            Well done! You&apos;ve successfully organized your project in a way that makes it 
             intuitive and easy to browse. Look through the new PY files.
           </Typography>
         </Paper>
@@ -2296,7 +2617,24 @@ if __name__ == "__main__":
             }}>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <PythonFileIcon />
-                <Typography variant="body1" sx={{ ml: 2, color: 'white', fontWeight: 'bold' }}>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    ml: 2, 
+                    color: 'white', 
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      color: '#6e00ff',
+                      textDecoration: 'underline'
+                    }
+                  }}
+                  onClick={() => {
+                    const fileInfo = getFileContentAndDescription('main.py', false);
+                    setSelectedFileForViewing(fileInfo);
+                    setShowFileContent(true);
+                  }}
+                >
                   main.py
                 </Typography>
               </Box>
@@ -2344,7 +2682,23 @@ if __name__ == "__main__":
                   }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       {getFileIcon(file.type)}
-                      <Typography variant="body1" sx={{ ml: 2, color: 'white' }}>
+                      <Typography 
+                        variant="body1" 
+                        sx={{ 
+                          ml: 2, 
+                          color: 'white',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            color: '#6e00ff',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                        onClick={() => {
+                          const fileInfo = getFileContentAndDescription(file.name, false);
+                          setSelectedFileForViewing(fileInfo);
+                          setShowFileContent(true);
+                        }}
+                      >
                         {file.name}
                       </Typography>
                     </Box>
@@ -2380,47 +2734,6 @@ if __name__ == "__main__":
               </Box>
             ))}
 
-            {/* Show some example files to fill out the directory */}
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              py: 1,
-              px: 2,
-              mb: 1,
-              bgcolor: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: 1
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <InsertDriveFileIcon sx={{ color: '#2196F3' }} />
-                <Typography variant="body1" sx={{ ml: 2, color: 'white' }}>
-                  __init__.py
-                </Typography>
-              </Box>
-              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                PY File
-              </Typography>
-            </Box>
-
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              py: 1,
-              px: 2,
-              mb: 1,
-              bgcolor: 'rgba(255, 255, 255, 0.05)',
-              borderRadius: 1
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Typography variant="body1" sx={{ ml: 2, color: 'rgba(255,255,255,0.6)' }}>
-                  etc.
-                </Typography>
-              </Box>
-              <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                etc.
-              </Typography>
-            </Box>
           </Box>
             </>
           )}
@@ -2450,7 +2763,23 @@ if __name__ == "__main__":
                 }}>
                   PY
                 </Box>
-                <Typography variant="body1" sx={{ color: 'white', fontWeight: 'bold' }}>
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    color: 'white', 
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    '&:hover': {
+                      color: '#6e00ff',
+                      textDecoration: 'underline'
+                    }
+                  }}
+                  onClick={() => {
+                    const fileInfo = getFileContentAndDescription('main.py', true);
+                    setSelectedFileForViewing(fileInfo);
+                    setShowFileContent(true);
+                  }}
+                >
                   main.py
                 </Typography>
               </Box>
@@ -2484,7 +2813,22 @@ if __name__ == "__main__":
                       ml: 2
                     }}>
                       <InsertDriveFileIcon sx={{ color: file.color, mr: 2, fontSize: '1.2rem' }} />
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: 'rgba(255,255,255,0.8)',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            color: '#6e00ff',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                        onClick={() => {
+                          const fileInfo = getFileContentAndDescription(file.name, true);
+                          setSelectedFileForViewing(fileInfo);
+                          setShowFileContent(true);
+                        }}
+                      >
                         {file.name}
                       </Typography>
                     </Box>
@@ -2534,7 +2878,22 @@ if __name__ == "__main__":
                       }}>
                         PY
                       </Box>
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: 'rgba(255,255,255,0.8)',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            color: '#6e00ff',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                        onClick={() => {
+                          const fileInfo = getFileContentAndDescription(file, true);
+                          setSelectedFileForViewing(fileInfo);
+                          setShowFileContent(true);
+                        }}
+                      >
                         {file}
                       </Typography>
                     </Box>
@@ -2571,7 +2930,22 @@ if __name__ == "__main__":
                       ml: 2
                     }}>
                       <ImageIcon sx={{ color: '#4CAF50', mr: 2, fontSize: '1.2rem' }} />
-                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          color: 'rgba(255,255,255,0.8)',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            color: '#6e00ff',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                        onClick={() => {
+                          const fileInfo = getFileContentAndDescription(file, true);
+                          setSelectedFileForViewing(fileInfo);
+                          setShowFileContent(true);
+                        }}
+                      >
                         {file}
                       </Typography>
                     </Box>
@@ -2582,31 +2956,100 @@ if __name__ == "__main__":
           )}
         </Paper>
 
-        {/* Bottom Navigation */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
+
+        {/* File Content Viewer Modal */}
+        <Dialog
+          open={showFileContent}
+          onClose={() => setShowFileContent(false)}
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{
+            sx: {
+              minHeight: '80vh',
+              bgcolor: '#1e1e1e',
+              color: 'white'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            bgcolor: 'black', 
+            color: 'white', 
+            display: 'flex', 
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {selectedFileForViewing?.name?.endsWith('.py') ? (
+                <PythonFileIcon />
+              ) : selectedFileForViewing?.name?.endsWith('.png') ? (
+                <ImageIcon sx={{ color: '#4CAF50', fontSize: '1.5rem' }} />
+              ) : (
+                <InsertDriveFileIcon sx={{ color: '#4CAF50', fontSize: '1.5rem' }} />
+              )}
+              <Typography variant="h6" sx={{ ml: 2 }}>
+                {selectedFileForViewing?.name || 'File'}
+              </Typography>
+            </Box>
+            <IconButton
+              onClick={() => setShowFileContent(false)}
+              sx={{ color: 'white' }}
+            >
+              <DeleteIcon />
+            </IconButton>
+          </DialogTitle>
           
-          <Button
-            variant="contained"
-            sx={{ 
-              bgcolor: 'black',
-              color: 'white',
-              '&:hover': { 
-                bgcolor: '#6e00ff' 
-              },
-              fontSize: '1rem',
-              fontWeight: 'bold',
-              px: 4,
-              py: 1.5
-            }}
-            onClick={() => {
-              // Handle finish activity - could navigate away or show completion message
-              console.log('Activity completed!');
-              alert('Congratulations! You have successfully completed the codebase organization activity.');
-            }}
-          >
-            FINISH ACTIVITY
-          </Button>
-        </Box>
+          <DialogContent sx={{ bgcolor: '#2d2d2d', color: 'white', p: 0 }}>
+            {/* File Description */}
+            <Box sx={{ p: 3, bgcolor: '#333333', borderBottom: '1px solid #444' }}>
+              <Typography variant="body1" sx={{ color: '#e0e0e0', lineHeight: 1.6 }}>
+                {selectedFileForViewing?.description}
+              </Typography>
+            </Box>
+            
+            {/* File Content */}
+            <Box sx={{ p: 3 }}>
+              <Typography variant="subtitle1" sx={{ color: '#ffd700', mb: 2, fontWeight: 'bold' }}>
+                File Contents:
+              </Typography>
+              <Box
+                sx={{
+                  bgcolor: '#1e1e1e',
+                  border: '1px solid #444',
+                  borderRadius: 1,
+                  p: 2,
+                  maxHeight: '60vh',
+                  overflow: 'auto',
+                  fontFamily: 'Consolas, Monaco, "Courier New", monospace'
+                }}
+              >
+                <pre style={{
+                  margin: 0,
+                  color: '#d4d4d4',
+                  fontSize: '0.85rem',
+                  lineHeight: 1.4,
+                  whiteSpace: 'pre-wrap',
+                  wordWrap: 'break-word'
+                }}>
+                  {selectedFileForViewing?.content || 'No content available'}
+                </pre>
+              </Box>
+            </Box>
+          </DialogContent>
+          
+          <DialogActions sx={{ bgcolor: 'black', p: 2 }}>
+            <Button
+              onClick={() => setShowFileContent(false)}
+              variant="contained"
+              sx={{
+                bgcolor: '#6e00ff',
+                color: 'white',
+                '&:hover': { bgcolor: '#5a00cc' }
+              }}
+            >
+              Close
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }
@@ -2629,7 +3072,7 @@ if __name__ == "__main__":
             💡 Additional editable sections:<br />
             • Import statement: Click the highlighted import line to add your imports<br />
             • Files array: Click the blue highlighted filenames to edit them<br />
-            • Load file line: Click the highlighted path area to add a folder path (e.g., "data\") before the filename<br />
+            • Load file line: Click the highlighted path area to add a folder path (e.g., &quot;data\&quot;) before the filename<br />
             • Output file name: Click the highlighted prefix area to customize the output filename<br />
             • Overview filename: Click the blue highlighted filename to change the overview output name
           </Typography>
@@ -3104,6 +3547,7 @@ if __name__ == "__main__":
     console.log('Validation result:', validateOrganization());
     console.log('File structure JSON:', exportFileStructure());
   };
+
 
   // Code display control functions
   const increaseFontSize = () => {
